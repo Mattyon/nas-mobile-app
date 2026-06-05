@@ -220,6 +220,19 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                 }
               },
               itemBuilder: (BuildContext ctx) => <PopupMenuEntry<String>>[
+                PopupMenuItem<String>(
+                  enabled: false,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(Api.I.displayName ?? Api.I.username ?? '—',
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(Api.I.role,
+                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
+                ),
+                const PopupMenuDivider(),
                 if (Api.I.isAdmin)
                   PopupMenuItem<String>(
                     value: 'sessions',
@@ -265,13 +278,25 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> with LangAware {
   final TextEditingController _q = TextEditingController();
-  String _type = 'movie';
   List<dynamic> _results = <dynamic>[];
   bool _busy = false;
   bool _searched = false; // a search has actually run
   String? _grabbing; // key of the item currently being requested
 
-  String _key(Map<String, dynamic> m) => '$_type-${m['tmdbId'] ?? m['tvdbId']}';
+  String _key(Map<String, dynamic> m) =>
+      '${m['type']}-${m['tmdbId'] ?? m['tvdbId']}';
+
+  Widget _typeBadge(String? t) {
+    final bool isTv = t == 'tv';
+    final Color c = isTv ? Colors.purpleAccent : Colors.tealAccent;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+          color: c.withValues(alpha: 0.25), borderRadius: BorderRadius.circular(4)),
+      child: Text(isTv ? tr('tv') : tr('movie'),
+          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
+    );
+  }
 
   Future<void> _run() async {
     if (_q.text.trim().isEmpty) return;
@@ -280,7 +305,7 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
       _searched = true;
     });
     try {
-      final List<dynamic> r = await Api.I.search(_q.text.trim(), _type);
+      final List<dynamic> r = await Api.I.search(_q.text.trim(), 'any');
       setState(() => _results = r);
     } catch (_) {
       setState(() => _results = <dynamic>[]);
@@ -290,6 +315,7 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
   }
 
   Widget _emptyState() {
+    if (_busy) return const SizedBox.shrink(); // loading bar at top shows progress
     return Center(
       child: _searched
           ? Text(tr('noResults'))
@@ -339,15 +365,16 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
     if (tier == null) return;
     setState(() => _grabbing = _key(item));   // disable + spinner on this item
     final VoidCallback closeStages = _showStages();
+    final String itype = item['type']?.toString() ?? 'movie';
     try {
       await Api.I.grab(
-        type: _type,
-        tmdbId: _type == 'movie' ? item['tmdbId'] as int? : null,
-        tvdbId: _type == 'tv' ? item['tvdbId'] as int? : null,
+        type: itype,
+        tmdbId: itype == 'movie' ? item['tmdbId'] as int? : null,
+        tvdbId: itype == 'tv' ? item['tvdbId'] as int? : null,
         tier: tier,
       );
       // TV grabs are async (Sonarr searches + queues episodes over time) -> say so.
-      _snackGo(_type == 'tv' ? tr('requestedTv') : tr('added'));
+      _snackGo(itype == 'tv' ? tr('requestedTv') : tr('added'));
     } catch (_) {
       _snack(tr('error'));
     } finally {
@@ -420,32 +447,14 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
       children: <Widget>[
         Padding(
           padding: const EdgeInsets.all(12),
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: TextField(
-                  controller: _q,
-                  textInputAction: TextInputAction.search,
-                  onSubmitted: (_) => _run(),
-                  decoration: InputDecoration(
-                    hintText: tr('searchHint'),
-                    prefixIcon: const Icon(Icons.search),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              SegmentedButton<String>(
-                segments: <ButtonSegment<String>>[
-                  ButtonSegment<String>(value: 'movie', label: Text(tr('movie'))),
-                  ButtonSegment<String>(value: 'tv', label: Text(tr('tv'))),
-                ],
-                selected: <String>{_type},
-                onSelectionChanged: (Set<String> s) {
-                  setState(() => _type = s.first);
-                  _run(); // re-search for the newly selected type (no-op if query empty)
-                },
-              ),
-            ],
+          child: TextField(
+            controller: _q,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => _run(),
+            decoration: InputDecoration(
+              hintText: tr('searchHint'),
+              prefixIcon: const Icon(Icons.search),
+            ),
           ),
         ),
         if (_busy) const LinearProgressIndicator(),
@@ -462,7 +471,13 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
                     return ListTile(
                       leading: PosterImage(m['poster'] as String?),
                       title: Text(m['title']?.toString() ?? ''),
-                      subtitle: Text(m['year']?.toString() ?? ''),
+                      subtitle: Row(
+                        children: <Widget>[
+                          _typeBadge(m['type']?.toString()),
+                          const SizedBox(width: 6),
+                          Text(m['year']?.toString() ?? ''),
+                        ],
+                      ),
                       // Already requested/downloaded -> show status instead of a button.
                       trailing: added
                           ? Row(
@@ -746,7 +761,8 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: <Widget>[
-              Text('${pct.toStringAsFixed(0)}% used', style: const TextStyle(fontSize: 12)),
+              Text('${pct.toStringAsFixed(0)}% of storage used',
+                  style: const TextStyle(fontSize: 12)),
               Text('${_freeStr(free)} free', style: const TextStyle(fontSize: 12)),
             ],
           ),
