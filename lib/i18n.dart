@@ -1,0 +1,69 @@
+import 'package:flutter/foundation.dart';
+
+/// Minimal, codegen-free i18n: a notifier holds the current language; tr() reads it.
+final ValueNotifier<String> lang = ValueNotifier<String>('en');
+
+const Map<String, Map<String, String>> _strings = {
+  'en': {
+    'app': 'NAS',
+    'login': 'Log in',
+    'username': 'Username',
+    'password': 'Password',
+    'serverUrl': 'Gateway URL',
+    'search': 'Search',
+    'searchHint': 'Search a movie or show…',
+    'movie': 'Movie',
+    'tv': 'TV Show',
+    'downloads': 'Downloads',
+    'library': 'Library',
+    'fast': 'Fast',
+    'balanced': 'Balanced',
+    'best': 'Best',
+    'pickQuality': 'Choose quality',
+    'download': 'Download',
+    'delete': 'Delete',
+    'deleteConfirm': 'Delete this from disk?',
+    'cancel': 'Cancel',
+    'logout': 'Log out',
+    'added': 'Added to downloads',
+    'deleted': 'Deleted',
+    'noResults': 'No results',
+    'onDisk': 'On disk',
+    'language': 'Čeština',
+    'loginFailed': 'Login failed',
+    'adminOnly': 'Admins only',
+  },
+  'cs': {
+    'app': 'NAS',
+    'login': 'Přihlásit se',
+    'username': 'Uživatel',
+    'password': 'Heslo',
+    'serverUrl': 'Adresa brány',
+    'search': 'Hledat',
+    'searchHint': 'Hledat film nebo seriál…',
+    'movie': 'Film',
+    'tv': 'Seriál',
+    'downloads': 'Stahování',
+    'library': 'Knihovna',
+    'fast': 'Rychle',
+    'balanced': 'Vyvážené',
+    'best': 'Nejlepší',
+    'pickQuality': 'Vyber kvalitu',
+    'download': 'Stáhnout',
+    'delete': 'Smazat',
+    'deleteConfirm': 'Smazat z disku?',
+    'cancel': 'Zrušit',
+    'logout': 'Odhlásit se',
+    'added': 'Přidáno ke stahování',
+    'deleted': 'Smazáno',
+    'noResults': 'Žádné výsledky',
+    'onDisk': 'Na disku',
+    'language': 'English',
+    'loginFailed': 'Přihlášení selhalo',
+    'adminOnly': 'Pouze administrátoři',
+  },
+};
+
+String tr(String key) => _strings[lang.value]?[key] ?? key;
+
+void toggleLang() => lang.value = lang.value == 'en' ? 'cs' : 'en';
