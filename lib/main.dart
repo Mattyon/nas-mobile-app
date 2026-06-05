@@ -283,6 +283,23 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
   bool _searched = false; // a search has actually run
   String? _grabbing; // key of the item currently being requested
 
+  @override
+  void initState() {
+    super.initState(); // LangAware adds its rebuild listener
+    lang.addListener(_reSearchOnLang);
+  }
+
+  @override
+  void dispose() {
+    lang.removeListener(_reSearchOnLang);
+    super.dispose();
+  }
+
+  // Re-run the search on language change so titles re-localize (cs <-> en).
+  void _reSearchOnLang() {
+    if (_searched && _q.text.trim().isNotEmpty) _run();
+  }
+
   String _key(Map<String, dynamic> m) =>
       '${m['type']}-${m['tmdbId'] ?? m['tvdbId']}';
 
@@ -305,7 +322,7 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
       _searched = true;
     });
     try {
-      final List<dynamic> r = await Api.I.search(_q.text.trim(), 'any');
+      final List<dynamic> r = await Api.I.search(_q.text.trim(), 'any', lang: lang.value);
       setState(() => _results = r);
     } catch (_) {
       setState(() => _results = <dynamic>[]);

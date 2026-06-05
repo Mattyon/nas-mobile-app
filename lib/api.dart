@@ -70,9 +70,9 @@ class Api {
     _build();
   }
 
-  Future<List<dynamic>> search(String q, String type) async {
+  Future<List<dynamic>> search(String q, String type, {String lang = 'en'}) async {
     final r = await _dio.get<Map<String, dynamic>>('/search',
-        queryParameters: <String, dynamic>{'q': q, 'type': type});
+        queryParameters: <String, dynamic>{'q': q, 'type': type, 'lang': lang});
     return r.data!['results'] as List<dynamic>;
   }
 
