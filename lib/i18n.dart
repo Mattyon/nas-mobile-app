@@ -5,7 +5,7 @@ final ValueNotifier<String> lang = ValueNotifier<String>('en');
 
 const Map<String, Map<String, String>> _strings = {
   'en': {
-    'app': 'NAS',
+    'app': "Matty's NAS",
     'login': 'Log in',
     'username': 'Username',
     'password': 'Password',
@@ -32,9 +32,10 @@ const Map<String, Map<String, String>> _strings = {
     'language': 'Čeština',
     'loginFailed': 'Login failed',
     'adminOnly': 'Admins only',
+    'error': 'Something went wrong',
   },
   'cs': {
-    'app': 'NAS',
+    'app': 'Mattyho NAS',
     'login': 'Přihlásit se',
     'username': 'Uživatel',
     'password': 'Heslo',
@@ -61,6 +62,7 @@ const Map<String, Map<String, String>> _strings = {
     'language': 'English',
     'loginFailed': 'Přihlášení selhalo',
     'adminOnly': 'Pouze administrátoři',
+    'error': 'Něco se pokazilo',
   },
 };
 
