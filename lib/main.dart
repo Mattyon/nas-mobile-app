@@ -25,7 +25,9 @@ class NasApp extends StatelessWidget {
             brightness: Brightness.dark,
             useMaterial3: true,
           ),
-          home: const AuthGate(),
+          // Key changes with the language so the whole subtree rebuilds and tr()
+          // re-evaluates (a const subtree would otherwise not rebuild).
+          home: AuthGate(key: ValueKey<String>('lang-${lang.value}')),
         );
       },
     );
@@ -52,6 +54,33 @@ class LangButton extends StatelessWidget {
     return TextButton(
       onPressed: toggleLang,
       child: Text(tr('language'), style: const TextStyle(color: Colors.white)),
+    );
+  }
+}
+
+/// Official cover art (loaded from the TMDb/TVDB URL the gateway provides).
+class PosterImage extends StatelessWidget {
+  final String? url;
+  const PosterImage(this.url, {super.key});
+  static const double _w = 46, _h = 69;
+
+  Widget _fallback(IconData icon) =>
+      Container(width: _w, height: _h, color: Colors.black26, child: Icon(icon, size: 20));
+
+  @override
+  Widget build(BuildContext context) {
+    if (url == null || url!.isEmpty) return _fallback(Icons.movie_outlined);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: Image.network(
+        url!,
+        width: _w,
+        height: _h,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _fallback(Icons.broken_image_outlined),
+        loadingBuilder: (BuildContext c, Widget child, ImageChunkEvent? p) =>
+            p == null ? child : _fallback(Icons.image_outlined),
+      ),
     );
   }
 }
@@ -289,6 +318,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   itemBuilder: (BuildContext context, int i) {
                     final Map<String, dynamic> m = _results[i] as Map<String, dynamic>;
                     return ListTile(
+                      leading: PosterImage(m['poster'] as String?),
                       title: Text(m['title']?.toString() ?? ''),
                       subtitle: Text(m['year']?.toString() ?? ''),
                       trailing: FilledButton.tonal(
@@ -445,10 +475,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 final Map<String, dynamic> m = _items[i] as Map<String, dynamic>;
                 final bool hasFile = m['hasFile'] == true;
                 return ListTile(
-                  leading: Icon(hasFile ? Icons.check_circle : Icons.hourglass_empty,
-                      color: hasFile ? Colors.green : Colors.grey),
+                  leading: PosterImage(m['poster'] as String?),
                   title: Text(m['title']?.toString() ?? ''),
-                  subtitle: Text(m['year']?.toString() ?? ''),
+                  subtitle: Row(
+                    children: <Widget>[
+                      Icon(hasFile ? Icons.check_circle : Icons.hourglass_empty,
+                          size: 14, color: hasFile ? Colors.green : Colors.grey),
+                      const SizedBox(width: 4),
+                      Text(m['year']?.toString() ?? ''),
+                    ],
+                  ),
                   trailing: Api.I.isAdmin
                       ? IconButton(
                           icon: const Icon(Icons.delete_outline),
