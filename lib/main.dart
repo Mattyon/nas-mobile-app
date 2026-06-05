@@ -70,9 +70,10 @@ class LangButton extends StatelessWidget {
     // so the label always offers the *other* language.
     return ValueListenableBuilder<String>(
       valueListenable: lang,
-      builder: (BuildContext context, String _, Widget? _) => TextButton(
+      builder: (BuildContext context, String code, Widget? _) => IconButton(
         onPressed: toggleLang,
-        child: Text(tr('language'), style: const TextStyle(color: Colors.white)),
+        tooltip: tr('language'),
+        icon: Text(code == 'cs' ? '🇨🇿' : '🇬🇧', style: const TextStyle(fontSize: 22)),
       ),
     );
   }
@@ -207,13 +208,36 @@ class _HomeShellState extends State<HomeShell> with LangAware {
           title: Text(tr('app')),
           actions: <Widget>[
             const LangButton(),
-            IconButton(
-              icon: const Icon(Icons.logout),
-              tooltip: tr('logout'),
-              onPressed: () async {
-                await Api.I.logout();
-                authTick.value++;
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              onSelected: (String v) async {
+                if (v == 'sessions') {
+                  Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => const SessionsScreen()));
+                } else if (v == 'logout') {
+                  await Api.I.logout();
+                  authTick.value++;
+                }
               },
+              itemBuilder: (BuildContext ctx) => <PopupMenuEntry<String>>[
+                if (Api.I.isAdmin)
+                  PopupMenuItem<String>(
+                    value: 'sessions',
+                    child: Row(children: <Widget>[
+                      const Icon(Icons.cast_connected, size: 20),
+                      const SizedBox(width: 12),
+                      Text(tr('plexSessions')),
+                    ]),
+                  ),
+                PopupMenuItem<String>(
+                  value: 'logout',
+                  child: Row(children: <Widget>[
+                    const Icon(Icons.logout, size: 20),
+                    const SizedBox(width: 12),
+                    Text(tr('logout')),
+                  ]),
+                ),
+              ],
             ),
           ],
         ),
@@ -244,13 +268,17 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
   String _type = 'movie';
   List<dynamic> _results = <dynamic>[];
   bool _busy = false;
+  bool _searched = false; // a search has actually run
   String? _grabbing; // key of the item currently being requested
 
   String _key(Map<String, dynamic> m) => '$_type-${m['tmdbId'] ?? m['tvdbId']}';
 
   Future<void> _run() async {
     if (_q.text.trim().isEmpty) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _searched = true;
+    });
     try {
       final List<dynamic> r = await Api.I.search(_q.text.trim(), _type);
       setState(() => _results = r);
@@ -259,6 +287,31 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Widget _emptyState() {
+    return Center(
+      child: _searched
+          ? Text(tr('noResults'))
+          : Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(Icons.movie_filter_outlined,
+                      size: 64, color: Colors.white.withValues(alpha: 0.4)),
+                  const SizedBox(height: 16),
+                  Text(tr('searchEmptyTitle'),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                      textAlign: TextAlign.center),
+                  const SizedBox(height: 8),
+                  Text(tr('searchEmptyHint'),
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+                      textAlign: TextAlign.center),
+                ],
+              ),
+            ),
+    );
   }
 
   Future<void> _grab(Map<String, dynamic> item) async {
@@ -398,7 +451,7 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
         if (_busy) const LinearProgressIndicator(),
         Expanded(
           child: _results.isEmpty
-              ? Center(child: Text(tr('noResults')))
+              ? _emptyState()
               : ListView.builder(
                   itemCount: _results.length,
                   itemBuilder: (BuildContext context, int i) {
@@ -454,6 +507,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   TabController? _tabs;
   bool _didInitTab = false;
   final TextEditingController _q = TextEditingController();
+  Map<String, dynamic> _xfer = <String, dynamic>{};
 
   @override
   void initState() {
@@ -475,9 +529,14 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   Future<void> _refresh() async {
     try {
       final List<dynamic> d = await Api.I.downloads();
+      Map<String, dynamic> x = _xfer;
+      try {
+        x = await Api.I.transfer();
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _items = d;
+        _xfer = x;
         // First time data arrives: open Active unless nothing is in progress.
         if (!_didInitTab && d.isNotEmpty) {
           _didInitTab = true;
@@ -599,7 +658,31 @@ class _DownloadsScreenState extends State<DownloadsScreen>
             ],
           ),
         ),
+        _speedBar(),
       ],
+    );
+  }
+
+  Widget _speedBar() {
+    final num dl = (_xfer['dl_mbps'] as num?) ?? 0;
+    final num up = (_xfer['up_mbps'] as num?) ?? 0;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: <Widget>[
+          Row(children: <Widget>[
+            const Icon(Icons.south, size: 16, color: Colors.lightBlueAccent),
+            const SizedBox(width: 4),
+            Text('$dl Mbit/s'),
+          ]),
+          Row(children: <Widget>[
+            const Icon(Icons.north, size: 16, color: Colors.greenAccent),
+            const SizedBox(width: 4),
+            Text('$up Mbit/s'),
+          ]),
+        ],
+      ),
     );
   }
 }
@@ -615,6 +698,7 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
   String _type = 'movie';
   final TextEditingController _q = TextEditingController();
   List<dynamic> _items = <dynamic>[];
+  Map<String, dynamic> _disk = <String, dynamic>{};
 
   @override
   void initState() {
@@ -625,8 +709,56 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
   Future<void> _refresh() async {
     try {
       final List<dynamic> r = await Api.I.library(_type, _q.text.trim());
-      if (mounted) setState(() => _items = r);
+      Map<String, dynamic> disk = _disk;
+      try {
+        disk = await Api.I.diskspace();
+      } catch (_) {}
+      if (mounted) {
+        setState(() {
+          _items = r;
+          _disk = disk;
+        });
+      }
     } catch (_) {}
+  }
+
+  String _freeStr(double gb) {
+    if (gb >= 1000) return '${(gb / 1000).toStringAsFixed(2)} TB';
+    if (gb >= 1) return '${gb.toStringAsFixed(0)} GB';
+    return '${(gb * 1000).toStringAsFixed(0)} MB';
+  }
+
+  Color _diskColor(double pct) {
+    if (pct > 85) return Colors.red;
+    if (pct > 80) return Colors.orange;
+    if (pct > 70) return Colors.yellow.shade700;
+    return Colors.green;
+  }
+
+  Widget _diskBar() {
+    final double pct = (_disk['used_pct'] as num?)?.toDouble() ?? 0;
+    final double free = (_disk['free_gb'] as num?)?.toDouble() ?? 0;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: <Widget>[
+              Text('${pct.toStringAsFixed(0)}% used', style: const TextStyle(fontSize: 12)),
+              Text('${_freeStr(free)} free', style: const TextStyle(fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+                value: pct / 100, minHeight: 6, color: _diskColor(pct)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _delete(Map<String, dynamic> m) async {
@@ -687,6 +819,11 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
               itemBuilder: (BuildContext context, int i) {
                 final Map<String, dynamic> m = _items[i] as Map<String, dynamic>;
                 final bool hasFile = m['hasFile'] == true;
+                final double sizeGb = (m['size_gb'] as num?)?.toDouble() ?? 0;
+                final String yearSize = <String>[
+                  m['year']?.toString() ?? '',
+                  if (sizeGb > 0) '${sizeGb.toStringAsFixed(1)} GB',
+                ].where((String s) => s.isNotEmpty).join('  •  ');
                 return ListTile(
                   leading: PosterImage(m['poster'] as String?),
                   title: Text(m['title']?.toString() ?? ''),
@@ -695,7 +832,7 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
                       Icon(hasFile ? Icons.check_circle : Icons.hourglass_empty,
                           size: 14, color: hasFile ? Colors.green : Colors.grey),
                       const SizedBox(width: 4),
-                      Text(m['year']?.toString() ?? ''),
+                      Text(yearSize),
                     ],
                   ),
                   trailing: Api.I.isAdmin
@@ -709,7 +846,94 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
             ),
           ),
         ),
+        if (((_disk['total_gb'] as num?) ?? 0) > 0) _diskBar(),
       ],
+    );
+  }
+}
+
+// ----------------------------- Plex sessions (admin) ------------------------
+class SessionsScreen extends StatefulWidget {
+  const SessionsScreen({super.key});
+  @override
+  State<SessionsScreen> createState() => _SessionsScreenState();
+}
+
+class _SessionsScreenState extends State<SessionsScreen> with LangAware {
+  List<dynamic> _sessions = <dynamic>[];
+  Timer? _timer;
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _refresh());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final List<dynamic> s = await Api.I.plexSessions();
+      if (mounted) {
+        setState(() {
+          _sessions = s;
+          _loaded = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loaded = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(tr('plexSessions'))),
+      body: !_loaded
+          ? const Center(child: CircularProgressIndicator())
+          : _sessions.isEmpty
+              ? Center(child: Text(tr('noSessions')))
+              : RefreshIndicator(
+                  onRefresh: _refresh,
+                  child: ListView.builder(
+                    itemCount: _sessions.length,
+                    itemBuilder: (BuildContext context, int i) {
+                      final Map<String, dynamic> s = _sessions[i] as Map<String, dynamic>;
+                      final double pct = (s['progress_pct'] as num?)?.toDouble() ?? 0;
+                      final bool playing = s['state'] == 'playing';
+                      final num? bw = s['bandwidth_kbps'] as num?;
+                      final String loc = (s['location'] ?? '').toString().toUpperCase();
+                      final bool transcode = s['transcode'] == true;
+                      return ListTile(
+                        leading: Icon(playing ? Icons.play_circle : Icons.pause_circle,
+                            color: playing ? Colors.green : Colors.orangeAccent),
+                        title: Text('${s['user'] ?? '?'} — ${s['title'] ?? ''}',
+                            maxLines: 2, overflow: TextOverflow.ellipsis),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            const SizedBox(height: 4),
+                            LinearProgressIndicator(value: pct / 100),
+                            const SizedBox(height: 4),
+                            Text(<String>[
+                              '${pct.toStringAsFixed(0)}%',
+                              if (s['player'] != null) s['player'].toString(),
+                              if (s['address'] != null) '${s['address']}${loc.isNotEmpty ? ' ($loc)' : ''}',
+                              if (bw != null) '${(bw / 1000).toStringAsFixed(1)} Mbit/s',
+                              transcode ? 'transcode' : 'direct',
+                            ].join('  •  ')),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
     );
   }
 }

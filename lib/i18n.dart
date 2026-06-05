@@ -41,6 +41,10 @@ const Map<String, Map<String, String>> _strings = {
     'stageDatabases': 'Checking torrent databases…',
     'stagePick': 'Picking the best release…',
     'stageStart': 'Starting the download…',
+    'searchEmptyTitle': 'Find something to watch',
+    'searchEmptyHint': 'Search a movie or show, then pick Fast, Balanced, or Best.',
+    'plexSessions': 'Plex sessions',
+    'noSessions': 'No one is watching right now',
   },
   'cs': {
     'app': 'Mattyho NAS',
@@ -79,6 +83,10 @@ const Map<String, Map<String, String>> _strings = {
     'stageDatabases': 'Prohledávám databáze…',
     'stagePick': 'Vybírám nejlepší verzi…',
     'stageStart': 'Spouštím stahování…',
+    'searchEmptyTitle': 'Najdi si co sledovat',
+    'searchEmptyHint': 'Vyhledej film nebo seriál a vyber Rychle, Vyvážené nebo Nejlepší.',
+    'plexSessions': 'Plex relace',
+    'noSessions': 'Nikdo teď nic nesleduje',
   },
 };
 
