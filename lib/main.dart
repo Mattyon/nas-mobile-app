@@ -285,6 +285,7 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
     );
     if (tier == null) return;
     setState(() => _grabbing = _key(item));   // disable + spinner on this item
+    final VoidCallback closeStages = _showStages();
     try {
       await Api.I.grab(
         type: _type,
@@ -297,8 +298,48 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
     } catch (_) {
       _snack(tr('error'));
     } finally {
+      closeStages();
       if (mounted) setState(() => _grabbing = null);   // re-enable
     }
+  }
+
+  /// Modal with a spinner that cycles through stage messages while we wait.
+  VoidCallback _showStages() {
+    final List<String> stages = <String>[
+      tr('stageSearch'), tr('stageDatabases'), tr('stagePick'), tr('stageStart'),
+    ];
+    final ValueNotifier<int> step = ValueNotifier<int>(0);
+    final Timer timer = Timer.periodic(const Duration(milliseconds: 1600), (_) {
+      if (step.value < stages.length - 1) step.value++;
+    });
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const SizedBox(
+                  width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+              const SizedBox(width: 18),
+              Flexible(
+                child: ValueListenableBuilder<int>(
+                  valueListenable: step,
+                  builder: (_, int i, _) => Text(stages[i]),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return () {
+      timer.cancel();
+      step.dispose();
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    };
   }
 
   void _snack(String m) {
@@ -363,18 +404,33 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
                   itemBuilder: (BuildContext context, int i) {
                     final Map<String, dynamic> m = _results[i] as Map<String, dynamic>;
                     final bool busy = _grabbing == _key(m);
+                    final bool added = m['added'] == true;
+                    final bool onDisk = m['hasFile'] == true;
                     return ListTile(
                       leading: PosterImage(m['poster'] as String?),
                       title: Text(m['title']?.toString() ?? ''),
                       subtitle: Text(m['year']?.toString() ?? ''),
-                      trailing: FilledButton.tonal(
-                        onPressed: busy ? null : () => _grab(m),
-                        child: busy
-                            ? const SizedBox(
-                                height: 18, width: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2))
-                            : Text(tr('download')),
-                      ),
+                      // Already requested/downloaded -> show status instead of a button.
+                      trailing: added
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                Icon(onDisk ? Icons.check_circle : Icons.hourglass_top,
+                                    size: 18,
+                                    color: onDisk ? Colors.green : Colors.orangeAccent),
+                                const SizedBox(width: 4),
+                                Text(onDisk ? tr('onDisk') : tr('inLibrary'),
+                                    style: const TextStyle(fontSize: 12)),
+                              ],
+                            )
+                          : FilledButton.tonal(
+                              onPressed: busy ? null : () => _grab(m),
+                              child: busy
+                                  ? const SizedBox(
+                                      height: 18, width: 18,
+                                      child: CircularProgressIndicator(strokeWidth: 2))
+                                  : Text(tr('download')),
+                            ),
                     );
                   },
                 ),
@@ -391,13 +447,19 @@ class DownloadsScreen extends StatefulWidget {
   State<DownloadsScreen> createState() => _DownloadsScreenState();
 }
 
-class _DownloadsScreenState extends State<DownloadsScreen> with LangAware {
+class _DownloadsScreenState extends State<DownloadsScreen>
+    with LangAware, SingleTickerProviderStateMixin {
   List<dynamic> _items = <dynamic>[];
   Timer? _timer;
+  TabController? _tabs;
+  bool _didInitTab = false;
+  final TextEditingController _q = TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    _tabs = TabController(length: 2, vsync: this);
+    _q.addListener(() => setState(() {}));
     _refresh();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _refresh());
   }
@@ -405,13 +467,25 @@ class _DownloadsScreenState extends State<DownloadsScreen> with LangAware {
   @override
   void dispose() {
     _timer?.cancel();
+    _tabs?.dispose();
+    _q.dispose();
     super.dispose();
   }
 
   Future<void> _refresh() async {
     try {
       final List<dynamic> d = await Api.I.downloads();
-      if (mounted) setState(() => _items = d);
+      if (!mounted) return;
+      setState(() {
+        _items = d;
+        // First time data arrives: open Active unless nothing is in progress.
+        if (!_didInitTab && d.isNotEmpty) {
+          _didInitTab = true;
+          final bool hasActive = d.any((dynamic e) =>
+              _group((e as Map<String, dynamic>)['state']?.toString() ?? '') <= 1);
+          _tabs!.index = hasActive ? 0 : 1;
+        }
+      });
     } catch (_) {}
   }
 
@@ -424,76 +498,108 @@ class _DownloadsScreenState extends State<DownloadsScreen> with LangAware {
     return '${sec}s';
   }
 
-  static const Set<String> _active = <String>{
+  static const Set<String> _activeStates = <String>{
     'downloading', 'forcedDL', 'metaDL', 'stalledDL', 'checkingDL', 'allocating'
   };
-  static const Set<String> _failed = <String>{'error', 'missingFiles'};
+  static const Set<String> _failedStates = <String>{'error', 'missingFiles'};
 
-  bool _isFailed(String s) => _failed.contains(s);
+  bool _isFailed(String s) => _failedStates.contains(s);
 
   int _group(String s) {
-    if (_active.contains(s)) return 0;     // active downloads
-    if (s == 'queuedDL') return 1;         // queued
-    if (_isFailed(s)) return 3;            // failed (last, red)
-    return 2;                              // finished / seeding / paused / stopped
+    if (_activeStates.contains(s)) return 0; // active downloads
+    if (s == 'queuedDL') return 1;           // queued
+    if (_isFailed(s)) return 3;              // failed (last, red)
+    return 2;                                // finished / seeding / paused / stopped
   }
 
-  List<Map<String, dynamic>> _sorted() {
-    final List<Map<String, dynamic>> items =
-        _items.map((dynamic e) => e as Map<String, dynamic>).toList();
+  // active=true -> downloading+queued; active=false -> finished+failed. Filtered by search.
+  List<Map<String, dynamic>> _filtered(bool active) {
+    final String ql = _q.text.trim().toLowerCase();
+    final List<Map<String, dynamic>> items = _items
+        .map((dynamic e) => e as Map<String, dynamic>)
+        .where((Map<String, dynamic> t) {
+      final int g = _group(t['state']?.toString() ?? '');
+      if (active ? g > 1 : g <= 1) return false;
+      if (ql.isEmpty) return true;
+      return (t['name']?.toString() ?? '').toLowerCase().contains(ql);
+    }).toList();
     items.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
       final int ga = _group(a['state']?.toString() ?? '');
       final int gb = _group(b['state']?.toString() ?? '');
       if (ga != gb) return ga.compareTo(gb);
       if (ga == 0) {
-        // active: most-complete first
-        final double pa = (a['progress'] as num?)?.toDouble() ?? 0;
-        final double pb = (b['progress'] as num?)?.toDouble() ?? 0;
-        return pb.compareTo(pa);
+        return ((b['progress'] as num?)?.toDouble() ?? 0)
+            .compareTo((a['progress'] as num?)?.toDouble() ?? 0);
       }
       return 0;
     });
     return items;
   }
 
+  Widget _tile(Map<String, dynamic> t) {
+    final double pct = (t['progress'] as num?)?.toDouble() ?? 0;
+    final bool failed = _isFailed(t['state']?.toString() ?? '');
+    final TextStyle? red = failed ? const TextStyle(color: Colors.redAccent) : null;
+    return ListTile(
+      title: Text(t['name']?.toString() ?? '',
+          maxLines: 1, overflow: TextOverflow.ellipsis, style: red),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const SizedBox(height: 4),
+          LinearProgressIndicator(value: pct / 100, color: failed ? Colors.redAccent : null),
+          const SizedBox(height: 4),
+          Text('${pct.toStringAsFixed(1)}%  •  ${t['dlspeed_mbps'] ?? 0} Mbit/s  •  '
+              'ETA ${_eta(t['eta_sec'])}  •  ${t['state'] ?? ''}', style: red),
+        ],
+      ),
+    );
+  }
+
+  Widget _list(List<Map<String, dynamic>> items) {
+    if (items.isEmpty) {
+      return ListView(children: <Widget>[
+        const SizedBox(height: 120),
+        Center(child: Text(tr('noResults'))),
+      ]);
+    }
+    return ListView.builder(
+      itemCount: items.length,
+      itemBuilder: (BuildContext context, int i) => _tile(items[i]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final List<Map<String, dynamic>> items = _sorted();
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: items.isEmpty
-          ? ListView(children: <Widget>[
-              const SizedBox(height: 120),
-              Center(child: Text(tr('noResults'))),
-            ])
-          : ListView.builder(
-              itemCount: items.length,
-              itemBuilder: (BuildContext context, int i) {
-                final Map<String, dynamic> t = items[i];
-                final double pct = (t['progress'] as num?)?.toDouble() ?? 0;
-                final bool failed = _isFailed(t['state']?.toString() ?? '');
-                return ListTile(
-                  title: Text(t['name']?.toString() ?? '', maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: failed ? const TextStyle(color: Colors.redAccent) : null),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      const SizedBox(height: 4),
-                      LinearProgressIndicator(
-                        value: pct / 100,
-                        color: failed ? Colors.redAccent : null,
-                      ),
-                      const SizedBox(height: 4),
-                      Text('${pct.toStringAsFixed(1)}%  •  '
-                          '${t['dlspeed_mbps'] ?? 0} Mbit/s  •  ETA ${_eta(t['eta_sec'])}  •  '
-                          '${t['state'] ?? ''}',
-                          style: failed ? const TextStyle(color: Colors.redAccent) : null),
-                    ],
-                  ),
-                );
-              },
-            ),
+    final List<Map<String, dynamic>> active = _filtered(true);
+    final List<Map<String, dynamic>> finished = _filtered(false);
+    return Column(
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: TextField(
+            controller: _q,
+            decoration: InputDecoration(
+                isDense: true, hintText: tr('search'), prefixIcon: const Icon(Icons.search)),
+          ),
+        ),
+        TabBar(
+          controller: _tabs,
+          tabs: <Widget>[
+            Tab(text: '${tr('active')} (${active.length})'),
+            Tab(text: '${tr('finished')} (${finished.length})'),
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabs,
+            children: <Widget>[
+              RefreshIndicator(onRefresh: _refresh, child: _list(active)),
+              RefreshIndicator(onRefresh: _refresh, child: _list(finished)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

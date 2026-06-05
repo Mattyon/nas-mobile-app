@@ -34,6 +34,13 @@ const Map<String, Map<String, String>> _strings = {
     'adminOnly': 'Admins only',
     'error': 'Something went wrong',
     'requestedTv': 'Requested — finding & queueing episodes…',
+    'active': 'Active',
+    'finished': 'Finished',
+    'inLibrary': 'In library',
+    'stageSearch': 'Fetching torrents…',
+    'stageDatabases': 'Checking torrent databases…',
+    'stagePick': 'Picking the best release…',
+    'stageStart': 'Starting the download…',
   },
   'cs': {
     'app': 'Mattyho NAS',
@@ -65,6 +72,13 @@ const Map<String, Map<String, String>> _strings = {
     'adminOnly': 'Pouze administrátoři',
     'error': 'Něco se pokazilo',
     'requestedTv': 'Požadováno — hledám a řadím epizody…',
+    'active': 'Aktivní',
+    'finished': 'Dokončené',
+    'inLibrary': 'V knihovně',
+    'stageSearch': 'Hledám torrenty…',
+    'stageDatabases': 'Prohledávám databáze…',
+    'stagePick': 'Vybírám nejlepší verzi…',
+    'stageStart': 'Spouštím stahování…',
   },
 };
 
