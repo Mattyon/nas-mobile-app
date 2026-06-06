@@ -63,6 +63,12 @@ const Map<String, Map<String, String>> _strings = {
     'displayName': 'Display name',
     'newPassword': 'New password (leave blank to keep)',
     'isAdmin': 'Administrator',
+    'rememberMe': 'Remember me for 365 days',
+    'loginWithBiometrics': 'Log in with fingerprint / face',
+    'killApp': 'Kill app',
+    'darkMode': 'Dark mode',
+    'lightMode': 'Light mode',
+    'deleteUser': 'Delete user',
   },
   'cs': {
     'app': 'Mattyho NAS',
@@ -123,6 +129,12 @@ const Map<String, Map<String, String>> _strings = {
     'displayName': 'Zobrazované jméno',
     'newPassword': 'Nové heslo (prázdné = beze změny)',
     'isAdmin': 'Administrátor',
+    'rememberMe': 'Zapamatovat mě na 365 dní',
+    'loginWithBiometrics': 'Přihlásit otiskem / obličejem',
+    'killApp': 'Ukončit aplikaci',
+    'darkMode': 'Tmavý režim',
+    'lightMode': 'Světlý režim',
+    'deleteUser': 'Smazat uživatele',
   },
 };
 

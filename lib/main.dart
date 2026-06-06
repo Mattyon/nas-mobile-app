@@ -1,30 +1,50 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
 import 'i18n.dart';
 
 final ValueNotifier<int> authTick = ValueNotifier<int>(0);
 final ValueNotifier<int> selectedTab = ValueNotifier<int>(0); // 0=Search 1=Downloads 2=Library
+final ValueNotifier<ThemeMode> themeMode = ValueNotifier<ThemeMode>(ThemeMode.dark);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Api.I.init();
+  final prefs = await SharedPreferences.getInstance();
+  final bool isDark = prefs.getBool('darkMode') ?? true;
+  themeMode.value = isDark ? ThemeMode.dark : ThemeMode.light;
   runApp(const NasApp());
+}
+
+Future<void> _toggleTheme() async {
+  final isDark = themeMode.value == ThemeMode.dark;
+  themeMode.value = isDark ? ThemeMode.light : ThemeMode.dark;
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool('darkMode', !isDark);
 }
 
 class NasApp extends StatelessWidget {
   const NasApp({super.key});
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'NAS',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: Colors.indigo,
-        brightness: Brightness.dark,
-        useMaterial3: true,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeMode,
+      builder: (BuildContext context, ThemeMode mode, Widget? _) => MaterialApp(
+        title: 'NAS',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+            colorSchemeSeed: Colors.indigo,
+            brightness: Brightness.light,
+            useMaterial3: true),
+        darkTheme: ThemeData(
+            colorSchemeSeed: Colors.indigo,
+            brightness: Brightness.dark,
+            useMaterial3: true),
+        themeMode: mode,
+        home: const AuthGate(),
       ),
-      home: const AuthGate(),
     );
   }
 }
@@ -49,13 +69,43 @@ mixin LangAware<T extends StatefulWidget> on State<T> {
   }
 }
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
   @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  bool _checking = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Api.I.onUnauthorized = () {
+      if (mounted) authTick.value++;
+    };
+    _tryAutoLogin();
+  }
+
+  Future<void> _tryAutoLogin() async {
+    if (!Api.I.isLoggedIn) {
+      final hasIt = await Api.I.hasRememberedCredentials();
+      if (hasIt) {
+        final ok = await Api.I.biometricAutoLogin();
+        if (ok && mounted) authTick.value++;
+      }
+    }
+    if (mounted) setState(() => _checking = false);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_checking) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return ValueListenableBuilder<int>(
       valueListenable: authTick,
-      builder: (BuildContext context, int _, Widget? _) {
+      builder: (BuildContext context, int _, Widget? __) {
         return Api.I.isLoggedIn ? const HomeShell() : const LoginScreen();
       },
     );
@@ -120,20 +170,57 @@ class _LoginScreenState extends State<LoginScreen> with LangAware {
   final TextEditingController _pass = TextEditingController();
   bool _busy = false;
   String? _error;
+  bool _rememberMe = false;
+  bool _canBio = false;
+  bool _hasRemembered = false;
+  String? _rememberedUser;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkCapabilities();
+  }
+
+  Future<void> _checkCapabilities() async {
+    final canBio = await Api.I.canUseBiometrics();
+    final hasRem = await Api.I.hasRememberedCredentials();
+    final remUser = await Api.I.rememberedUsername();
+    if (mounted) {
+      setState(() {
+        _canBio = canBio;
+        _hasRemembered = hasRem;
+        _rememberedUser = remUser;
+        if (_hasRemembered) _rememberMe = true;
+      });
+    }
+  }
 
   Future<void> _submit() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
+    setState(() { _busy = true; _error = null; });
     try {
       await Api.I.setBaseUrl(_url.text);
       await Api.I.login(_user.text.trim(), _pass.text);
+      if (_rememberMe) {
+        await Api.I.saveRememberedCredentials(_user.text.trim(), _pass.text);
+      } else {
+        await Api.I.clearRememberedCredentials();
+      }
       authTick.value++;
     } catch (_) {
       setState(() => _error = tr('loginFailed'));
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _biometricLogin() async {
+    setState(() { _busy = true; _error = null; });
+    final ok = await Api.I.biometricAutoLogin();
+    if (!mounted) return;
+    if (ok) {
+      authTick.value++;
+    } else {
+      setState(() { _busy = false; _error = tr('loginFailed'); });
     }
   }
 
@@ -148,6 +235,18 @@ class _LoginScreenState extends State<LoginScreen> with LangAware {
             shrinkWrap: true,
             padding: const EdgeInsets.all(24),
             children: <Widget>[
+              if (_canBio && _hasRemembered) ...<Widget>[
+                FilledButton.icon(
+                  onPressed: _busy ? null : _biometricLogin,
+                  icon: const Icon(Icons.fingerprint),
+                  label: Text(_rememberedUser != null
+                      ? '${tr('loginWithBiometrics')} ($_rememberedUser)'
+                      : tr('loginWithBiometrics')),
+                ),
+                const SizedBox(height: 24),
+                const Divider(),
+                const SizedBox(height: 16),
+              ],
               TextField(
                 controller: _url,
                 decoration: InputDecoration(labelText: tr('serverUrl')),
@@ -164,7 +263,14 @@ class _LoginScreenState extends State<LoginScreen> with LangAware {
                 decoration: InputDecoration(labelText: tr('password')),
                 onSubmitted: (_) => _submit(),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(tr('rememberMe')),
+                value: _rememberMe,
+                onChanged: _busy ? null : (bool? v) => setState(() => _rememberMe = v ?? false),
+              ),
+              const SizedBox(height: 12),
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
@@ -283,72 +389,100 @@ class _HomeShellState extends State<HomeShell> with LangAware {
           title: Text(tr('app')),
           actions: <Widget>[
             const LangButton(),
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert),
-              onSelected: (String v) async {
-                if (v == 'sessions') {
-                  Navigator.of(context).push(
-                      MaterialPageRoute<void>(builder: (_) => const SessionsScreen()));
-                } else if (v == 'users') {
-                  Navigator.of(context).push(
-                      MaterialPageRoute<void>(builder: (_) => const UsersScreen()));
-                } else if (v == 'speed') {
-                  _showSpeedDialog(context);
-                } else if (v == 'logout') {
-                  await Api.I.logout();
-                  authTick.value++;
-                }
-              },
-              itemBuilder: (BuildContext ctx) => <PopupMenuEntry<String>>[
-                PopupMenuItem<String>(
-                  enabled: false,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(Api.I.displayName ?? Api.I.username ?? '—',
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                      Text(Api.I.role,
-                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                    ],
-                  ),
-                ),
-                const PopupMenuDivider(),
-                if (Api.I.isAdmin)
+            ValueListenableBuilder<ThemeMode>(
+              valueListenable: themeMode,
+              builder: (BuildContext ctx2, ThemeMode mode, Widget? _) =>
+                  PopupMenuButton<String>(
+                icon: const Icon(Icons.menu),
+                onSelected: (String v) async {
+                  if (v == 'sessions') {
+                    Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => const SessionsScreen()));
+                  } else if (v == 'users') {
+                    Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => const UsersScreen()));
+                  } else if (v == 'speed') {
+                    _showSpeedDialog(context);
+                  } else if (v == 'theme') {
+                    await _toggleTheme();
+                  } else if (v == 'logout') {
+                    await Api.I.logout();
+                    authTick.value++;
+                  } else if (v == 'kill') {
+                    exit(0);
+                  }
+                },
+                itemBuilder: (BuildContext ctx) => <PopupMenuEntry<String>>[
                   PopupMenuItem<String>(
-                    value: 'sessions',
+                    enabled: false,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(Api.I.displayName ?? Api.I.username ?? '—',
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text(Api.I.role,
+                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(),
+                  if (Api.I.isAdmin)
+                    PopupMenuItem<String>(
+                      value: 'sessions',
+                      child: Row(children: <Widget>[
+                        const Icon(Icons.cast_connected, size: 20),
+                        const SizedBox(width: 12),
+                        Text(tr('plexSessions')),
+                      ]),
+                    ),
+                  if (Api.I.isAdmin)
+                    PopupMenuItem<String>(
+                      value: 'speed',
+                      child: Row(children: <Widget>[
+                        const Icon(Icons.speed, size: 20),
+                        const SizedBox(width: 12),
+                        Text(tr('speedLimits')),
+                      ]),
+                    ),
+                  if (Api.I.isAdmin)
+                    PopupMenuItem<String>(
+                      value: 'users',
+                      child: Row(children: <Widget>[
+                        const Icon(Icons.people, size: 20),
+                        const SizedBox(width: 12),
+                        Text(tr('userManagement')),
+                      ]),
+                    ),
+                  PopupMenuItem<String>(
+                    value: 'theme',
                     child: Row(children: <Widget>[
-                      const Icon(Icons.cast_connected, size: 20),
+                      Icon(mode == ThemeMode.dark ? Icons.light_mode : Icons.dark_mode,
+                          size: 20),
                       const SizedBox(width: 12),
-                      Text(tr('plexSessions')),
+                      Text(mode == ThemeMode.dark ? tr('lightMode') : tr('darkMode')),
                     ]),
                   ),
-                if (Api.I.isAdmin)
                   PopupMenuItem<String>(
-                    value: 'speed',
+                    value: 'logout',
                     child: Row(children: <Widget>[
-                      const Icon(Icons.speed, size: 20),
+                      const Icon(Icons.logout, size: 20),
                       const SizedBox(width: 12),
-                      Text(tr('speedLimits')),
+                      Text(tr('logout')),
                     ]),
                   ),
-                if (Api.I.isAdmin)
+                  const PopupMenuDivider(),
                   PopupMenuItem<String>(
-                    value: 'users',
+                    value: 'kill',
                     child: Row(children: <Widget>[
-                      const Icon(Icons.people, size: 20),
+                      const Icon(Icons.power_settings_new, size: 20,
+                          color: Colors.redAccent),
                       const SizedBox(width: 12),
-                      Text(tr('userManagement')),
+                      Text(tr('killApp'),
+                          style: const TextStyle(color: Colors.redAccent)),
                     ]),
                   ),
-                PopupMenuItem<String>(
-                  value: 'logout',
-                  child: Row(children: <Widget>[
-                    const Icon(Icons.logout, size: 20),
-                    const SizedBox(width: 12),
-                    Text(tr('logout')),
-                  ]),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
@@ -365,6 +499,30 @@ class _HomeShellState extends State<HomeShell> with LangAware {
       ),
     );
   }
+}
+
+Widget _errorView(String message, VoidCallback onRetry) {
+  return Center(
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const Icon(Icons.cloud_off, size: 48, color: Colors.redAccent),
+          const SizedBox(height: 16),
+          Text(message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 // ----------------------------- search ---------------------------------------
@@ -640,6 +798,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   bool _didInitTab = false;
   final TextEditingController _q = TextEditingController();
   Map<String, dynamic> _xfer = <String, dynamic>{};
+  String? _error;
 
   @override
   void initState() {
@@ -669,6 +828,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
       setState(() {
         _items = d;
         _xfer = x;
+        _error = null;
         // First time data arrives: open Active unless nothing is in progress.
         if (!_didInitTab && d.isNotEmpty) {
           _didInitTab = true;
@@ -677,7 +837,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           _tabs!.index = hasActive ? 0 : 1;
         }
       });
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    }
   }
 
   String _eta(Object? s) {
@@ -762,6 +924,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_error != null) {
+      return _errorView(_error!, _refresh);
+    }
     final List<Map<String, dynamic>> active = _filtered(true);
     final List<Map<String, dynamic>> finished = _filtered(false);
     return Column(
@@ -831,6 +996,7 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
   final TextEditingController _q = TextEditingController();
   List<dynamic> _items = <dynamic>[];
   Map<String, dynamic> _disk = <String, dynamic>{};
+  String? _error;
 
   @override
   void initState() {
@@ -849,9 +1015,12 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
         setState(() {
           _items = r;
           _disk = disk;
+          _error = null;
         });
       }
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    }
   }
 
   String _freeStr(double gb) {
@@ -915,6 +1084,9 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
 
   @override
   Widget build(BuildContext context) {
+    if (_error != null) {
+      return _errorView(_error!, _refresh);
+    }
     return Column(
       children: <Widget>[
         Padding(
