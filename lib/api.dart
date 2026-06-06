@@ -118,4 +118,53 @@ class Api {
     final r = await _dio.get<Map<String, dynamic>>('/plex/sessions');
     return r.data!['sessions'] as List<dynamic>;
   }
+
+  Future<Map<String, dynamic>> qbtLimits() async {
+    final r = await _dio.get<Map<String, dynamic>>('/qbt/limits');
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<void> setQbtLimits(double dlMbps, double upMbps) async {
+    await _dio.post<dynamic>('/qbt/limits',
+        data: <String, dynamic>{'dl_mbps': dlMbps, 'up_mbps': upMbps});
+  }
+
+  Future<void> qbtPause() async => _dio.post<dynamic>('/qbt/pause');
+  Future<void> qbtResume() async => _dio.post<dynamic>('/qbt/resume');
+
+  Future<List<dynamic>> listUsers() async {
+    final r = await _dio.get<Map<String, dynamic>>('/users');
+    return r.data!['users'] as List<dynamic>;
+  }
+
+  Future<void> createUser({
+    required String username,
+    required String password,
+    String displayname = '',
+    bool isAdmin = false,
+  }) async {
+    await _dio.post<dynamic>('/users', data: <String, dynamic>{
+      'username': username,
+      'password': password,
+      'displayname': displayname,
+      'is_admin': isAdmin,
+    });
+  }
+
+  Future<void> updateUser(
+    String username, {
+    String? password,
+    String displayname = '',
+    bool isAdmin = false,
+  }) async {
+    await _dio.put<dynamic>('/users/$username', data: <String, dynamic>{
+      if (password != null) 'password': password,
+      'displayname': displayname,
+      'is_admin': isAdmin,
+    });
+  }
+
+  Future<void> deleteUser(String username) async {
+    await _dio.delete<dynamic>('/users/$username');
+  }
 }
