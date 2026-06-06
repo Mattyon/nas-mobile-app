@@ -1194,6 +1194,25 @@ class _SessionsScreenState extends State<SessionsScreen> with LangAware {
     }
   }
 
+  String _ago(int unixSec) {
+    if (unixSec <= 0) return '';
+    final int diffSec =
+        DateTime.now().millisecondsSinceEpoch ~/ 1000 - unixSec;
+    if (diffSec < 90) return '${diffSec}s ago';
+    final int m = diffSec ~/ 60;
+    if (m < 90) return '${m}m ago';
+    final int h = diffSec ~/ 3600;
+    if (h < 48) return '${h}h ago';
+    return '${diffSec ~/ 86400}d ago';
+  }
+
+  Future<void> _terminate(String sessionKey) async {
+    try {
+      await Api.I.terminatePlexSession(sessionKey);
+      await _refresh();
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1213,26 +1232,66 @@ class _SessionsScreenState extends State<SessionsScreen> with LangAware {
                       final num? bw = s['bandwidth_kbps'] as num?;
                       final String loc = (s['location'] ?? '').toString().toUpperCase();
                       final bool transcode = s['transcode'] == true;
+                      final int lastViewedAt = (s['last_viewed_at'] as num?)?.toInt() ?? 0;
+                      final String ago = _ago(lastViewedAt);
+                      final bool stale = lastViewedAt > 0 &&
+                          (DateTime.now().millisecondsSinceEpoch ~/ 1000 - lastViewedAt) > 300;
+                      final String? sessionKey = s['session_key']?.toString();
                       return ListTile(
                         leading: Icon(playing ? Icons.play_circle : Icons.pause_circle,
-                            color: playing ? Colors.green : Colors.orangeAccent),
-                        title: Text('${s['user'] ?? '?'} — ${s['title'] ?? ''}',
-                            maxLines: 2, overflow: TextOverflow.ellipsis),
+                            color: stale
+                                ? Colors.grey
+                                : playing
+                                    ? Colors.green
+                                    : Colors.orangeAccent),
+                        title: Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: Text('${s['user'] ?? '?'} — ${s['title'] ?? ''}',
+                                  maxLines: 2, overflow: TextOverflow.ellipsis),
+                            ),
+                            if (stale)
+                              Container(
+                                margin: const EdgeInsets.only(left: 6),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                    color: Colors.orange.withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(4)),
+                                child: Text('stale',
+                                    style: const TextStyle(
+                                        fontSize: 11, color: Colors.orange)),
+                              ),
+                          ],
+                        ),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
                             const SizedBox(height: 4),
-                            LinearProgressIndicator(value: pct / 100),
+                            LinearProgressIndicator(
+                                value: pct / 100,
+                                color: stale ? Colors.grey : null),
                             const SizedBox(height: 4),
                             Text(<String>[
                               '${pct.toStringAsFixed(0)}%',
+                              if (ago.isNotEmpty) ago,
                               if (s['player'] != null) s['player'].toString(),
-                              if (s['address'] != null) '${s['address']}${loc.isNotEmpty ? ' ($loc)' : ''}',
-                              if (bw != null) '${(bw / 1000).toStringAsFixed(1)} Mbit/s',
+                              if (s['address'] != null)
+                                '${s['address']}${loc.isNotEmpty ? ' ($loc)' : ''}',
+                              if (bw != null)
+                                '${(bw / 1000).toStringAsFixed(1)} Mbit/s',
                               transcode ? tr('transcode') : tr('direct'),
                             ].join('  •  ')),
                           ],
                         ),
+                        trailing: sessionKey != null
+                            ? IconButton(
+                                icon: const Icon(Icons.cancel_outlined,
+                                    color: Colors.redAccent),
+                                tooltip: 'Terminate session',
+                                onPressed: () => _terminate(sessionKey),
+                              )
+                            : null,
                       );
                     },
                   ),
