@@ -741,7 +741,6 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
                   itemBuilder: (BuildContext context, int i) {
                     final Map<String, dynamic> m = _results[i] as Map<String, dynamic>;
                     final bool busy = _grabbing == _key(m);
-                    final bool added = m['added'] == true;
                     final bool onDisk = m['hasFile'] == true;
                     return ListTile(
                       leading: PosterImage(m['poster'] as String?),
@@ -753,17 +752,16 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
                           Text(m['year']?.toString() ?? ''),
                         ],
                       ),
-                      // Already requested/downloaded -> show status instead of a button.
-                      trailing: added
+                      // On disk → green check, no button.
+                      // Added but no file → show download button (allows retry).
+                      // Not added → download button.
+                      trailing: onDisk
                           ? Row(
                               mainAxisSize: MainAxisSize.min,
                               children: <Widget>[
-                                Icon(onDisk ? Icons.check_circle : Icons.hourglass_top,
-                                    size: 18,
-                                    color: onDisk ? Colors.green : Colors.orangeAccent),
+                                const Icon(Icons.check_circle, size: 18, color: Colors.green),
                                 const SizedBox(width: 4),
-                                Text(onDisk ? tr('onDisk') : tr('inLibrary'),
-                                    style: const TextStyle(fontSize: 12)),
+                                Text(tr('onDisk'), style: const TextStyle(fontSize: 12)),
                               ],
                             )
                           : FilledButton.tonal(
