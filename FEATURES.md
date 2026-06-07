@@ -187,6 +187,33 @@ Sk-CzTorrent credentials are stored in `.env` (gitignored). The gateway auto-reg
 
 ---
 
+## Setup: Cloudflare Tunnel (remote access)
+
+Exposes the gateway and Jellyfin over HTTPS to the internet — no port forwarding, works behind any ISP/CGNAT, free.
+
+**One-time setup:**
+1. Create a free account at [cloudflare.com](https://cloudflare.com) and add your domain (or use a free `*.trycloudflare.com` subdomain for testing).
+2. Go to **Zero Trust → Networks → Tunnels → Create a tunnel** → name it e.g. `nas`.
+3. Copy the tunnel token shown on screen.
+4. Paste it into `~/Desktop/nas/.env`:
+   ```
+   CLOUDFLARE_TUNNEL_TOKEN=<paste token here>
+   ```
+5. Start the tunnel: `docker compose up -d cloudflared`
+6. Back in the Cloudflare dashboard, go to **Public Hostnames** and add two routes:
+   | Subdomain | Domain | Service |
+   |-----------|--------|---------|
+   | `nas` | yourdomain.com | `http://ai-gateway:8000` |
+   | `jellyfin` | yourdomain.com | `http://jellyfin:8096` |
+7. Update the default server URL in the mobile app login screen to `https://nas.yourdomain.com`.
+
+Once done:
+- Mobile app works anywhere without Tailscale: `https://nas.yourdomain.com`
+- Jellyfin works on TVs and any browser anywhere: `https://jellyfin.yourdomain.com`
+- Both services keep their own authentication — nothing is publicly open.
+
+---
+
 ## Setup: Jellyfin API Key
 
 Jellyfin runs in Docker (no apt install needed — the Docker image handles all dependencies).
