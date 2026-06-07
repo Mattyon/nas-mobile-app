@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
@@ -52,6 +53,7 @@ Future<void> _notifyDownloadDone(String name) async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   await Api.I.init();
   if (Platform.isAndroid) await _initNotifications();
   final prefs = await SharedPreferences.getInstance();
@@ -413,6 +415,7 @@ class _LoginScreenState extends State<LoginScreen> with LangAware {
               ],
               TextField(
                 controller: _url,
+                readOnly: true,
                 decoration: InputDecoration(labelText: tr('serverUrl')),
               ),
               const SizedBox(height: 12),
@@ -1734,8 +1737,9 @@ class _LocalTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme cs = Theme.of(context).colorScheme;
+    final double bottomPad = MediaQuery.of(context).viewPadding.bottom + 24;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPad),
       children: <Widget>[
         _AddressCard(
           address: 'http://192.168.50.141:8096',
@@ -1767,44 +1771,15 @@ class _RemoteTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme cs = Theme.of(context).colorScheme;
+    final double bottomPad = MediaQuery.of(context).viewPadding.bottom + 24;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPad),
       children: <Widget>[
         _AddressCard(
           address: 'https://jellyfin.mattyzem.com',
           icon: Icons.public,
           color: cs.tertiaryContainer,
           onColor: cs.onTertiaryContainer,
-        ),
-        const SizedBox(height: 8),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                const Icon(Icons.check_circle_outline, size: 20, color: Colors.green),
-                const SizedBox(width: 10),
-                Expanded(child: Text(tr('helpNoSetup'),
-                    style: const TextStyle(fontSize: 13))),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                const Icon(Icons.phone_android, size: 20, color: Colors.blueAccent),
-                const SizedBox(width: 10),
-                Expanded(child: Text(tr('helpNasAppUrl'),
-                    style: const TextStyle(fontSize: 13, fontFamily: 'monospace'))),
-              ],
-            ),
-          ),
         ),
         const SizedBox(height: 12),
         _HelpSection(icon: Icons.tv, title: tr('helpTvTitle'), steps: <String>[
@@ -2034,6 +2009,7 @@ class _SessionsScreenState extends State<SessionsScreen> with LangAware {
               : RefreshIndicator(
                   onRefresh: _refresh,
                   child: ListView.builder(
+                    padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewPadding.bottom + 16),
                     itemCount: _sessions.length,
                     itemBuilder: (BuildContext context, int i) {
                       final Map<String, dynamic> s = _sessions[i] as Map<String, dynamic>;
@@ -2274,6 +2250,7 @@ class _UsersScreenState extends State<UsersScreen> with LangAware {
               : RefreshIndicator(
                   onRefresh: _refresh,
                   child: ListView.builder(
+                    padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewPadding.bottom + 16),
                     itemCount: _users.length,
                     itemBuilder: (BuildContext context, int i) {
                       final Map<String, dynamic> u = _users[i] as Map<String, dynamic>;
