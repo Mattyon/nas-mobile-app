@@ -342,7 +342,8 @@ class Api {
       String chatId, String content) async {
     final r = await _dio.post<Map<String, dynamic>>(
       '/ai/chats/$chatId/message',
-      data: <String, dynamic>{'content': content},
+      // active:true tells the gateway the chat screen is open → skip push + unread flag
+      data: <String, dynamic>{'content': content, 'active': true},
       options: Options(receiveTimeout: const Duration(minutes: 3)),
     );
     return r.data!;
