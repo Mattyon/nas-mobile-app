@@ -11,7 +11,7 @@ Complete list of everything the app and gateway can do.
 - JWT tokens with 12-hour TTL, auto-refresh on 401
 - **Remember me** — stores credentials encrypted for 365 days (renewable on each use)
 - **Biometric login** — fingerprint / face unlock on app open (if device supports it)
-- Roles: `user` (read + download) and `admin` (full access)
+- Roles: `user` (read + download), `admin` (full access), **`superadmin`** (`ai_access: true` flag in YAML — only superadmins can grant this to others)
 
 ### Search
 - Full-text search across movies and TV shows via Radarr/Sonarr lookup
@@ -43,9 +43,21 @@ Complete list of everything the app and gateway can do.
 - Pull-to-refresh on both tabs; auto-refresh every 1 second
 - Search/filter within the downloads list
 
+### Item Detail View
+- Full-screen detail opened by tapping any search result or library item
+- `SliverAppBar` with TMDb backdrop image + gradient overlay; back button with `black54` circle background (visible on any poster color)
+- Poster, year, rating (TMDb), runtime, genre chips
+- Country of origin flags, network, status (movie/series)
+- Language chips + 2-step download picker (language → quality tier)
+- Expandable/collapsible overview (`Show more / Show less`)
+- Director credit line (movies only)
+- Cast horizontal scroll — circular actor photos with name label
+- TV: season accordion — tap a season to expand episodes with color-coded quality dots (green = 1080p+, amber = 720p, red = SD)
+
 ### Library
 - Grid view of all fully imported movies and TV shows
-- Tap → show details + delete option (admin only, deletes files from disk)
+- Tap → full detail view with all metadata (same as search)
+- Admin-only delete from detail view (removes files from disk)
 - Search within library
 
 ### Notifications Bell (AppBar)
@@ -61,11 +73,20 @@ Complete list of everything the app and gateway can do.
 | Plex Sessions | View active streams, kill a session |
 | Speed Limits | Set qBittorrent download/upload caps (Mbit/s) |
 | Pause / Resume all | One-tap pause or resume all torrents |
-| User Management | Create, edit, delete users; set admin role |
-| AI Assistant | Chat with local Ollama LLM; can search/download/check status |
+| User Management | Create, edit, delete users; set admin role; superadmins also see an "AI access" toggle |
 | Speed Test | Ookla speedtest (~30 s); shows download, upload, ping, ISP, server |
 | Health Check | Shows disk/DB health report; manual re-run button; color-coded issues/warnings |
 | Check New Episodes | Manual trigger for the daily new-episode scan (all users) |
+
+### Superadmin Features (ai_access flag only)
+| Feature | Description |
+|---------|-------------|
+| AI Chats | List of named conversations, each stored server-side in SQLite |
+| New chat | Create a named conversation |
+| Chat rename / delete | Long-press (or ⋮ menu) any chat to rename or delete |
+| Chat history | All messages loaded from the NAS on open — consistent across devices |
+| Send message | Full Ollama tool-calling loop; push notification sent on LLM reply |
+| Grant AI access | Only a superadmin can toggle AI access for another user |
 
 ### UI / UX
 - Dark mode by default, toggle in hamburger menu
@@ -79,13 +100,14 @@ Complete list of everything the app and gateway can do.
 ### Endpoints
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/login` | — | Issue JWT |
+| POST | `/login` | — | Issue JWT; returns `is_admin`, `is_superadmin` |
 | GET | `/search` | user | Search movies/TV; `lang=cs` for Czech titles |
 | POST | `/grab` | user | Download a movie or TV series |
 | GET | `/downloads` | user | Active qBittorrent torrents |
 | GET | `/transfer` | user | Global dl/ul speed in MB/s |
-| GET | `/library` | user | Radarr/Sonarr library |
+| GET | `/library` | user | Radarr/Sonarr library (includes `tmdbId`, `tvdbId`, `overview`, `type`) |
 | DELETE | `/library` | admin | Delete item + files |
+| GET | `/detail` | user | Full item metadata (Radarr/Sonarr + TMDb) |
 | GET | `/diskspace` | user | Free/total disk space |
 | GET | `/plex/sessions` | admin | Active Plex streams |
 | DELETE | `/plex/sessions/{key}` | admin | Kill a Plex session |
@@ -95,14 +117,20 @@ Complete list of everything the app and gateway can do.
 | POST | `/qbt/resume` | admin | Resume all torrents |
 | POST | `/qbt/reorder` | user | Move torrent up/down in queue |
 | POST | `/webhook/{source}` | — | Radarr/Sonarr import webhooks |
-| POST | `/chat` | user | Ollama LLM chat with NAS tool-calling |
+| POST | `/chat` | superadmin | Legacy single-turn Ollama LLM chat (stateless) |
+| GET | `/ai/chats` | superadmin | List all conversations for the current user |
+| POST | `/ai/chats` | superadmin | Create a new named conversation |
+| GET | `/ai/chats/{id}` | superadmin | Get chat metadata + full message history |
+| PATCH | `/ai/chats/{id}` | superadmin | Rename a conversation |
+| DELETE | `/ai/chats/{id}` | superadmin | Delete a conversation and all its messages |
+| POST | `/ai/chats/{id}/message` | superadmin | Send a message; runs Ollama tool-loop; pushes ntfy on completion |
 | GET | `/speedtest` | admin | Ookla speedtest |
 | GET | `/notifications` | user | Stored notifications (newest first) |
 | POST | `/notifications/clear` | user | Clear all notifications |
 | POST | `/cron/new-episodes` | user | Manual trigger for new-episode check |
 | GET | `/health/report` | user | Last health check report |
 | POST | `/health/check` | admin | Manual trigger for disk/DB health check |
-| GET/PUT/POST/DELETE | `/users/...` | admin | User management |
+| GET/PUT/POST/DELETE | `/users/...` | admin | User management; `is_ai_access` field settable by superadmin only |
 | GET | `/health` | — | Gateway liveness check |
 
 ### Automation
@@ -110,6 +138,13 @@ Complete list of everything the app and gateway can do.
 - **Daily new-episode CRON** (3 AM Europe/Prague): Queries Sonarr for monitored episodes that aired in the last 7 days with no file. Triggers `SeriesSearch` for affected shows. Ollama generates a friendly notification summary. Sends "📺 New episodes downloading" notification.
 - **Daily health check CRON** (4 AM Europe/Prague): Checks Sonarr/Radarr DB state against actual files on disk, detects missing files, suspiciously small files, not-imported downloads, and qBittorrent errors. Stores report in memory; admin-only `POST /health/check` endpoint for manual trigger. Report accessible via `GET /health/report`.
 - **Webhook-driven notifications**: Radarr/Sonarr fire webhooks on grab/import/failure. Gateway stores them in-memory and pushes to ntfy.
+- **TV notification debounce**: per-series 45-second timer batches multiple episode-import webhooks into one notification (e.g. "The Office (2005) — S02E01–E06 (6 episodes) ready to watch") instead of one push per episode.
+- **Stall detection**: `_check_series_grab_async` distinguishes stalled (no progress) from actively downloading torrents. Sends a "⚠️ Stalled" ntfy push and records a notification if all queue items for a series are stalled.
+- **Stall recovery on restart**: `_recover_stalled_grabs()` runs 5 minutes after gateway startup, re-scans series added in the last 35 minutes with all-stalled queues (handles the case where the daemon thread was killed by a container restart).
+- **Bilingual notifications (EN + CS)**: every `_store_notification` call asks Ollama to translate the title and body to Czech. The in-memory notification stores both `title`/`body` (English) and `title_cs`/`body_cs` (Czech). The ntfy push includes both languages in the body (`English body\n🇨🇿 Czech body`). The in-app bell shows the language that matches the current app language setting. Falls back silently to English-only when Ollama is unavailable.
+
+### Persistence
+- **AI chat history** stored in SQLite (`/app/data/ai_chats.db`, mounted from `./ai-gateway/data` on the host). Schema: `chats` (id, username, title, has_unread, created_at, updated_at) + `messages` (id, chat_id, role, content, ts). Conversations survive gateway restarts and are accessible from any device.
 
 ### Ranking
 - Heuristic score: resolution + source + HDR + seeders + size penalty + indexer trust
