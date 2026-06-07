@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1709,132 +1710,196 @@ class HelpScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(title: Text(tr('helpConnect'))),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: <Widget>[
-          // --- Server address card ---
-          Card(
-            color: cs.primaryContainer,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Row(children: <Widget>[
-                    Icon(Icons.dns_outlined, color: cs.onPrimaryContainer),
-                    const SizedBox(width: 8),
-                    Text('Jellyfin server address',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: cs.onPrimaryContainer)),
-                  ]),
-                  const SizedBox(height: 12),
-                  _AddressRow(
-                    label: 'Home network',
-                    address: 'http://192.168.50.141:8096',
-                    icon: Icons.home_outlined,
-                  ),
-                  const SizedBox(height: 8),
-                  _AddressRow(
-                    label: 'Anywhere (Tailscale)',
-                    address: 'http://100.91.166.12:8096',
-                    icon: Icons.vpn_lock_outlined,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // --- Smart TV ---
-          _HelpSection(
-            icon: Icons.tv,
-            title: 'Smart TV  (LG · Samsung)',
-            steps: const <String>[
-              'Open the App Store on your TV.',
-              'Search for "Jellyfin" and install it.',
-              'Open Jellyfin and tap "Add server".',
-              'Enter the server address above (home network if on the same Wi-Fi, Tailscale address if remote).',
-              'Log in with the username and password given to you by the admin.',
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // --- Phone / tablet ---
-          _HelpSection(
-            icon: Icons.phone_android,
-            title: 'Phone & tablet  (Android · iOS)',
-            steps: const <String>[
-              'Install the Jellyfin app from Google Play or the App Store.',
-              'Tap "Add server" and enter the server address above.',
-              'Log in with your credentials.',
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // --- Browser ---
-          _HelpSection(
-            icon: Icons.open_in_browser,
-            title: 'Browser',
-            steps: const <String>[
-              'Open any browser on your computer or phone.',
-              'Go to http://192.168.50.141:8096 (home) or http://100.91.166.12:8096 (Tailscale).',
-              'Log in with your credentials.',
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // --- Remote access note ---
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  const Icon(Icons.info_outline, size: 20, color: Colors.blueAccent),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Remote access (outside home) requires Tailscale to be installed and connected on your device. Ask the admin for an invite.',
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(tr('helpConnect')),
+          bottom: TabBar(tabs: <Widget>[
+            Tab(icon: const Icon(Icons.home), text: tr('helpHomeNetwork')),
+            Tab(icon: const Icon(Icons.public), text: tr('helpAnywhere')),
+          ]),
+        ),
+        body: TabBarView(children: <Widget>[
+          _LocalTab(),
+          _RemoteTab(),
+        ]),
       ),
     );
   }
 }
 
-class _AddressRow extends StatelessWidget {
-  const _AddressRow({required this.label, required this.address, required this.icon});
-  final String label;
-  final String address;
-  final IconData icon;
+class _LocalTab extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: <Widget>[
+        _AddressCard(
+          address: 'http://192.168.50.141:8096',
+          icon: Icons.home_outlined,
+          color: cs.primaryContainer,
+          onColor: cs.onPrimaryContainer,
+        ),
+        const SizedBox(height: 16),
+        _HelpSection(icon: Icons.tv, title: tr('helpTvTitle'), steps: <String>[
+          tr('helpTvStep1'), tr('helpTvStep2'), tr('helpTvStep3'),
+          tr('helpTvStep4local'), tr('helpTvStep5'),
+        ]),
+        const SizedBox(height: 12),
+        _HelpSection(icon: Icons.phone_android, title: tr('helpMobileTitle'), steps: <String>[
+          tr('helpMobileStep1'), tr('helpMobileStep2local'), tr('helpMobileStep3'),
+        ]),
+        const SizedBox(height: 12),
+        _HelpSection(icon: Icons.open_in_browser, title: tr('helpBrowserTitle'), steps: <String>[
+          tr('helpBrowserStep1'), tr('helpBrowserStep2local'), tr('helpBrowserStep3'),
+        ]),
+      ],
+    );
+  }
+}
+
+class _RemoteTab extends StatelessWidget {
+  Future<void> _open(String url) async {
+    final Uri uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
 
   @override
   Widget build(BuildContext context) {
     final ColorScheme cs = Theme.of(context).colorScheme;
-    return Row(
+    return ListView(
+      padding: const EdgeInsets.all(16),
       children: <Widget>[
-        Icon(icon, size: 16, color: cs.onPrimaryContainer.withValues(alpha: 0.7)),
-        const SizedBox(width: 6),
-        Text('$label: ', style: TextStyle(fontSize: 13, color: cs.onPrimaryContainer.withValues(alpha: 0.8))),
-        Expanded(
-          child: Text(address,
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onPrimaryContainer,
-                  fontFamily: 'monospace')),
+        _AddressCard(
+          address: 'http://100.91.166.12:8096',
+          icon: Icons.vpn_lock_outlined,
+          color: cs.tertiaryContainer,
+          onColor: cs.onTertiaryContainer,
         ),
+        const SizedBox(height: 16),
+        _HelpSection(icon: Icons.vpn_key_outlined, title: tr('helpTailscaleTitle'), steps: <String>[
+          tr('helpTailscaleStep1'), tr('helpTailscaleStep2'),
+          tr('helpTailscaleStep3'), tr('helpTailscaleStep4'), tr('helpTailscaleStep5'),
+        ]),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(children: <Widget>[
+                  const Icon(Icons.download_outlined, size: 20),
+                  const SizedBox(width: 8),
+                  Text(tr('helpTailscaleDownload'),
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                ]),
+                const SizedBox(height: 10),
+                _LinkRow(
+                  icon: Icons.android,
+                  label: tr('helpTailscaleAndroid'),
+                  url: 'https://play.google.com/store/apps/details?id=com.tailscale.ipn',
+                  onTap: _open,
+                ),
+                const SizedBox(height: 8),
+                _LinkRow(
+                  icon: Icons.phone_iphone,
+                  label: tr('helpTailscaleIos'),
+                  url: 'https://apps.apple.com/app/tailscale/id1470499037',
+                  onTap: _open,
+                ),
+                const SizedBox(height: 8),
+                _LinkRow(
+                  icon: Icons.computer,
+                  label: tr('helpTailscaleDesktop'),
+                  url: 'https://tailscale.com/download',
+                  onTap: _open,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _HelpSection(icon: Icons.tv, title: tr('helpTvTitle'), steps: <String>[
+          tr('helpTvStep1'), tr('helpTvStep2'), tr('helpTvStep3'),
+          tr('helpTvStep4remote'), tr('helpTvStep5'),
+        ]),
+        const SizedBox(height: 12),
+        _HelpSection(icon: Icons.phone_android, title: tr('helpMobileTitle'), steps: <String>[
+          tr('helpMobileStep1'), tr('helpMobileStep2remote'), tr('helpMobileStep3'),
+        ]),
+        const SizedBox(height: 12),
+        _HelpSection(icon: Icons.open_in_browser, title: tr('helpBrowserTitle'), steps: <String>[
+          tr('helpBrowserStep1'), tr('helpBrowserStep2remote'), tr('helpBrowserStep3'),
+        ]),
       ],
+    );
+  }
+}
+
+class _AddressCard extends StatelessWidget {
+  const _AddressCard({required this.address, required this.icon, required this.color, required this.onColor});
+  final String address;
+  final IconData icon;
+  final Color color;
+  final Color onColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: color,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(children: <Widget>[
+              Icon(Icons.dns_outlined, color: onColor),
+              const SizedBox(width: 8),
+              Text(tr('helpServerAddr'),
+                  style: TextStyle(fontWeight: FontWeight.w700, color: onColor)),
+            ]),
+            const SizedBox(height: 10),
+            Row(children: <Widget>[
+              Icon(icon, size: 16, color: onColor.withValues(alpha: 0.7)),
+              const SizedBox(width: 6),
+              Text(address,
+                  style: TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600,
+                      color: onColor, fontFamily: 'monospace')),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LinkRow extends StatelessWidget {
+  const _LinkRow({required this.icon, required this.label, required this.url, required this.onTap});
+  final IconData icon;
+  final String label;
+  final String url;
+  final Future<void> Function(String) onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => onTap(url),
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(children: <Widget>[
+          Icon(icon, size: 18, color: Colors.blueAccent),
+          const SizedBox(width: 8),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 13, color: Colors.blueAccent,
+                  decoration: TextDecoration.underline)),
+        ]),
+      ),
     );
   }
 }
@@ -1856,7 +1921,7 @@ class _HelpSection extends StatelessWidget {
             Row(children: <Widget>[
               Icon(icon, size: 20),
               const SizedBox(width: 8),
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+              Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w700))),
             ]),
             const SizedBox(height: 10),
             ...steps.asMap().entries.map((MapEntry<int, String> e) => Padding(
@@ -1865,11 +1930,8 @@ class _HelpSection extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Text('${e.key + 1}. ',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600, fontSize: 13)),
-                      Expanded(
-                          child: Text(e.value,
-                              style: const TextStyle(fontSize: 13))),
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                      Expanded(child: Text(e.value, style: const TextStyle(fontSize: 13))),
                     ],
                   ),
                 )),
