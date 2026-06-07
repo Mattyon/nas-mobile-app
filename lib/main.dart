@@ -2078,9 +2078,35 @@ class _AiChatsListScreenState extends State<AiChatsListScreen> with LangAware {
                   itemBuilder: (BuildContext context, int i) {
                     final Map<String, dynamic> chat =
                         _chats[i] as Map<String, dynamic>;
+                    final bool unread = (chat['has_unread'] as int? ?? 0) == 1;
+                    final String title = chat['title'] as String? ?? 'Chat';
+                    final ColorScheme cs = Theme.of(context).colorScheme;
                     return ListTile(
-                      leading: const Icon(Icons.chat_bubble_outline),
-                      title: Text(chat['title'] as String? ?? 'Chat'),
+                      leading: Stack(
+                        clipBehavior: Clip.none,
+                        children: <Widget>[
+                          const Icon(Icons.chat_bubble_outline),
+                          if (unread)
+                            Positioned(
+                              right: -2,
+                              top: -2,
+                              child: Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: cs.primary,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      title: Text(
+                        title,
+                        style: TextStyle(
+                          fontWeight: unread ? FontWeight.w700 : FontWeight.normal,
+                        ),
+                      ),
                       subtitle: Text(
                         (chat['updated_at'] as String? ?? '').replaceFirst('T', ' ').substring(0, 16),
                         style: const TextStyle(fontSize: 12),
@@ -2089,7 +2115,7 @@ class _AiChatsListScreenState extends State<AiChatsListScreen> with LangAware {
                         await Navigator.of(context).push(MaterialPageRoute<void>(
                             builder: (_) => AiChatScreen(
                                 chatId: chat['id'] as String,
-                                initialTitle: chat['title'] as String? ?? 'Chat')));
+                                initialTitle: title)));
                         await _load();
                       },
                       trailing: PopupMenuButton<String>(
@@ -2182,7 +2208,14 @@ class _AiChatScreenState extends State<AiChatScreen> with LangAware {
     try {
       final Map<String, dynamic> reply =
           await Api.I.sendChatMessage(widget.chatId, text);
-      if (mounted) setState(() => _messages.add(reply));
+      if (mounted) {
+        setState(() {
+          _messages.add(reply);
+          // Auto-title: update AppBar if the gateway generated a name.
+          final String? newTitle = reply['new_title'] as String?;
+          if (newTitle != null && newTitle.isNotEmpty) _title = newTitle;
+        });
+      }
     } catch (e) {
       if (mounted) {
         setState(() => _messages.add(
