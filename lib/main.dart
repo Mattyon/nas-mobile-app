@@ -937,13 +937,16 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
         return;
       }
 
-      // Update local on_disk state so the card reflects immediately
+      // Update local on_disk state immediately.
+      // TV + Czech: Sonarr grabs asynchronously; don't flag as on-disk until
+      // the backend confirms via registry (webhook on import). Flag only after
+      // actual file import to avoid showing Czech as available when nothing downloaded.
       if (mounted) {
         setState(() {
-          if (language == 'cs') {
-            item['on_disk_cs'] = true;
-          } else {
+          if (language == 'en') {
             item['on_disk_en'] = true;
+          } else if (language == 'cs' && itype == 'movie') {
+            item['on_disk_cs'] = true;
           }
         });
       }
