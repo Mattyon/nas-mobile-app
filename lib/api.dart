@@ -197,6 +197,9 @@ class Api {
     displayName = null;
     groups = <String>[];
     isSuperadmin = false;
+    baseUrl = 'https://nas.mattyzem.com';
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('baseUrl');
     await _secure.delete(key: 'token');
     _build();
   }
