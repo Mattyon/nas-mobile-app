@@ -20,7 +20,7 @@ class Api {
     connectTimeout: const Duration(seconds: 15),
     receiveTimeout: const Duration(seconds: 30),
   ));
-  String baseUrl = 'http://100.91.166.12:8000'; // tailnet IP of the NAS, gateway port
+  String baseUrl = 'https://nas.mattyzem.com'; // public gateway via Cloudflare Tunnel
   String? token;
   String? username;
   String? displayName;

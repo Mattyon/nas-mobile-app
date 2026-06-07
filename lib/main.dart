@@ -1761,11 +1761,6 @@ class _LocalTab extends StatelessWidget {
 }
 
 class _RemoteTab extends StatelessWidget {
-  Future<void> _open(String url) async {
-    final Uri uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
-
   @override
   Widget build(BuildContext context) {
     final ColorScheme cs = Theme.of(context).colorScheme;
@@ -1773,50 +1768,37 @@ class _RemoteTab extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       children: <Widget>[
         _AddressCard(
-          address: 'http://100.91.166.12:8096',
-          icon: Icons.vpn_lock_outlined,
+          address: 'https://jellyfin.mattyzem.com',
+          icon: Icons.public,
           color: cs.tertiaryContainer,
           onColor: cs.onTertiaryContainer,
         ),
-        const SizedBox(height: 16),
-        _HelpSection(icon: Icons.vpn_key_outlined, title: tr('helpTailscaleTitle'), steps: <String>[
-          tr('helpTailscaleStep1'), tr('helpTailscaleStep2'),
-          tr('helpTailscaleStep3'), tr('helpTailscaleStep4'), tr('helpTailscaleStep5'),
-        ]),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(14),
-            child: Column(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Row(children: <Widget>[
-                  const Icon(Icons.download_outlined, size: 20),
-                  const SizedBox(width: 8),
-                  Text(tr('helpTailscaleDownload'),
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                ]),
-                const SizedBox(height: 10),
-                _LinkRow(
-                  icon: Icons.android,
-                  label: tr('helpTailscaleAndroid'),
-                  url: 'https://play.google.com/store/apps/details?id=com.tailscale.ipn',
-                  onTap: _open,
-                ),
-                const SizedBox(height: 8),
-                _LinkRow(
-                  icon: Icons.phone_iphone,
-                  label: tr('helpTailscaleIos'),
-                  url: 'https://apps.apple.com/app/tailscale/id1470499037',
-                  onTap: _open,
-                ),
-                const SizedBox(height: 8),
-                _LinkRow(
-                  icon: Icons.computer,
-                  label: tr('helpTailscaleDesktop'),
-                  url: 'https://tailscale.com/download',
-                  onTap: _open,
-                ),
+                const Icon(Icons.check_circle_outline, size: 20, color: Colors.green),
+                const SizedBox(width: 10),
+                Expanded(child: Text(tr('helpNoSetup'),
+                    style: const TextStyle(fontSize: 13))),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Icon(Icons.phone_android, size: 20, color: Colors.blueAccent),
+                const SizedBox(width: 10),
+                Expanded(child: Text(tr('helpNasAppUrl'),
+                    style: const TextStyle(fontSize: 13, fontFamily: 'monospace'))),
               ],
             ),
           ),
