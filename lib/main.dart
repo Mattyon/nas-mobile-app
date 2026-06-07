@@ -945,14 +945,15 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
       }
 
       // Update local on_disk state immediately.
-      // TV + Czech: Sonarr grabs asynchronously; don't flag as on-disk until
-      // the backend confirms via registry (webhook on import). Flag only after
-      // actual file import to avoid showing Czech as available when nothing downloaded.
       if (mounted) {
         setState(() {
-          if (language == 'en') {
+          if (itype == 'tv') {
+            // Backend returns current registry state; use it to correct stale Flutter flags.
+            if (result.containsKey('on_disk_en')) item['on_disk_en'] = result['on_disk_en'];
+            if (result.containsKey('on_disk_cs')) item['on_disk_cs'] = result['on_disk_cs'];
+          } else if (language == 'en') {
             item['on_disk_en'] = true;
-          } else if (language == 'cs' && itype == 'movie') {
+          } else if (language == 'cs') {
             item['on_disk_cs'] = true;
           }
         });
