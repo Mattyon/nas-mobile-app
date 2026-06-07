@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 /// Minimal, codegen-free i18n: a notifier holds the current language; tr() reads it.
 final ValueNotifier<String> lang = ValueNotifier<String>('en');
@@ -69,6 +69,65 @@ const Map<String, Map<String, String>> _strings = {
     'darkMode': 'Dark mode',
     'lightMode': 'Light mode',
     'deleteUser': 'Delete user',
+    'notifications': 'Notifications',
+    'noNotifications': 'No notifications yet',
+    'clearAll': 'Clear all',
+    'checkNewEps': 'Check new episodes',
+    'newEpsStarted': 'Checking for new episodes…',
+    'aiAssistant': 'AI Assistant',
+    'aiHint': 'Ask the AI anything…',
+    'aiClear': 'Clear chat',
+    'aiEmptyHint': 'Ask me to search or download movies, check downloads, or anything else.',
+    'czechAudio': 'Czech audio',
+    'czechAudioHint': 'balanced quality, Czech audio preferred',
+    'speedtest': 'Speed Test',
+    'runSpeedtest': 'Run test',
+    'speedtestRunning': 'Running speed test…\nThis takes ~30 seconds.',
+    'downloadSpeed': 'Download',
+    'uploadSpeed': 'Upload',
+    'ping': 'Ping',
+    'isp': 'ISP',
+    'testServer': 'Server',
+    'healthCheck': 'Health Check',
+    'runHealthCheck': 'Run check',
+    'healthCheckRunning': 'Running health check…',
+    'healthCheckOk': 'Everything looks healthy',
+    'healthCheckIssues': 'Issues found',
+    'healthCheckWarnings': 'Warnings',
+    'healthCheckLastRun': 'Last run',
+    'healthCheckNever': 'Never run',
+    'healthCheckIssue': 'Issue',
+    'healthCheckWarning': 'Warning',
+    'healthCheckMissing': 'Missing file',
+    'healthCheckSmall': 'Suspiciously small',
+    'healthCheckNotImported': 'Not imported',
+    'healthCheckQbtError': 'Torrent error',
+    'healthCheckStalled': 'Stalled >24h',
+    'healthCheckSonarr': 'Sonarr',
+    'healthCheckRadarr': 'Radarr',
+    'healthCheckDuration': 'Duration',
+    'pickLanguage': 'Choose language',
+    'langEnglish': 'English',
+    'langCzech': 'Czech',
+    'noCzechAudio': 'No Czech audio found',
+    'noCzechAudioMsg': 'No Czech audio release was found for "{title}". Download in English with {tier} quality instead?',
+    'downloadInEnglish': 'Download in English',
+    'inLibraryBoth': 'In library',
+    'appLanguage': 'app language',
+    'swap': 'Swap',
+    'swapStarted': 'Alternative download started',
+    'noAlternative': 'No seeded alternative found',
+    'langMismatch': 'Wrong language',
+    'cast': 'Cast',
+    'seasons': 'Seasons',
+    'showMore': 'Show more',
+    'showLess': 'Show less',
+    'director': 'Director',
+    'aiFix': 'AI Fix',
+    'aiFixing': 'Analyzing…',
+    'aiFixResult': 'AI fixed it',
+    'aiFixFailed': 'Could not auto-fix',
+    'ok': 'OK',
   },
   'cs': {
     'app': 'Mattyho NAS',
@@ -135,9 +194,87 @@ const Map<String, Map<String, String>> _strings = {
     'darkMode': 'Tmavý režim',
     'lightMode': 'Světlý režim',
     'deleteUser': 'Smazat uživatele',
+    'notifications': 'Oznámení',
+    'noNotifications': 'Žádná oznámení',
+    'clearAll': 'Smazat vše',
+    'checkNewEps': 'Zkontrolovat nové epizody',
+    'newEpsStarted': 'Hledám nové epizody…',
+    'aiAssistant': 'Asistent AI',
+    'aiHint': 'Zeptej se AI na cokoliv…',
+    'aiClear': 'Smazat chat',
+    'aiEmptyHint': 'Zeptej se mě na vyhledání nebo stažení filmů, kontrolu stahování nebo na cokoliv jiného.',
+    'czechAudio': 'Česky (dabing)',
+    'czechAudioHint': 'vyvážená kvalita, preferuje česky dabované verze',
+    'speedtest': 'Test rychlosti',
+    'runSpeedtest': 'Spustit test',
+    'speedtestRunning': 'Spouštím test rychlosti…\nTrvá přibližně 30 sekund.',
+    'downloadSpeed': 'Stahování',
+    'uploadSpeed': 'Nahrávání',
+    'ping': 'Ping',
+    'isp': 'ISP',
+    'testServer': 'Server',
+    'healthCheck': 'Kontrola zdraví',
+    'runHealthCheck': 'Spustit kontrolu',
+    'healthCheckRunning': 'Probíhá kontrola…',
+    'healthCheckOk': 'Vše vypadá v pořádku',
+    'healthCheckIssues': 'Nalezené problémy',
+    'healthCheckWarnings': 'Varování',
+    'healthCheckLastRun': 'Poslední spuštění',
+    'healthCheckNever': 'Zatím nespuštěno',
+    'healthCheckIssue': 'Problém',
+    'healthCheckWarning': 'Varování',
+    'healthCheckMissing': 'Chybějící soubor',
+    'healthCheckSmall': 'Podezřele malý soubor',
+    'healthCheckNotImported': 'Neimportováno',
+    'healthCheckQbtError': 'Chyba torrenta',
+    'healthCheckStalled': 'Zastaveno >24h',
+    'healthCheckSonarr': 'Sonarr',
+    'healthCheckRadarr': 'Radarr',
+    'healthCheckDuration': 'Trvání',
+    'pickLanguage': 'Vyber jazyk',
+    'langEnglish': 'Angličtina',
+    'langCzech': 'Čeština',
+    'noCzechAudio': 'Česky dabing nenalezen',
+    'noCzechAudioMsg': 'Pro „{title}" nebyl nalezen žádný český dabing. Stáhnout v angličtině ({tier})?',
+    'downloadInEnglish': 'Stáhnout v angličtině',
+    'inLibraryBoth': 'V knihovně',
+    'appLanguage': 'jazyk aplikace',
+    'swap': 'Vyměnit',
+    'swapStarted': 'Alternativní stahování spuštěno',
+    'noAlternative': 'Žádná alternativa se seedery',
+    'langMismatch': 'Chybný jazyk',
+    'cast': 'Obsazení',
+    'seasons': 'Sezóny',
+    'showMore': 'Zobrazit více',
+    'showLess': 'Zobrazit méně',
+    'director': 'Režisér',
+    'aiFix': 'Opravit AI',
+    'aiFixing': 'Analyzuji…',
+    'aiFixResult': 'AI to opravila',
+    'aiFixFailed': 'Nelze automaticky opravit',
+    'ok': 'OK',
   },
 };
 
 String tr(String key) => _strings[lang.value]?[key] ?? key;
 
 void toggleLang() => lang.value = lang.value == 'en' ? 'cs' : 'en';
+
+/// Rebuilds a screen's State when the language changes — WITHOUT remounting.
+mixin LangAware<T extends StatefulWidget> on State<T> {
+  void _onLangChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    lang.addListener(_onLangChanged);
+  }
+
+  @override
+  void dispose() {
+    lang.removeListener(_onLangChanged);
+    super.dispose();
+  }
+}

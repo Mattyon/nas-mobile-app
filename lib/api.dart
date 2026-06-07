@@ -3,6 +3,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+const String kTmdbApiKey = '459748b4e1dbed21bf8ba93fbff3dab6';
+const String kTmdbReadAccessToken =
+    'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI0NTk3NDhiNGUxZGJlZDIxYmY4YmE5M2ZiZmYzZGFiNiIsIm5iZiI6MTc4MDgyMjkzMi41NDQ5OTk4LCJzdWIiOiI2YTI1MzM5NDI5NWVhYTUyZmU1YTdiOTEiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.y5k0CO0S0805FkAiZgh62AoDycKnMNhzTS6_DUJ-fHo';
+
 /// Thin client for the NAS AI gateway. Singleton: Api.I
 class Api {
   Api._();
@@ -11,6 +15,11 @@ class Api {
   final FlutterSecureStorage _secure = const FlutterSecureStorage();
   final LocalAuthentication _localAuth = LocalAuthentication();
   late Dio _dio;
+  final Dio _tmdbDio = Dio(BaseOptions(
+    baseUrl: 'https://api.themoviedb.org',
+    connectTimeout: const Duration(seconds: 15),
+    receiveTimeout: const Duration(seconds: 30),
+  ));
   String baseUrl = 'http://100.91.166.12:8000'; // tailnet IP of the NAS, gateway port
   String? token;
   String? username;
@@ -195,14 +204,20 @@ class Api {
     return r.data!['results'] as List<dynamic>;
   }
 
-  Future<Map<String, dynamic>> grab(
-      {required String type, int? tmdbId, int? tvdbId, required String tier}) async {
+  Future<Map<String, dynamic>> grab({
+    required String type,
+    int? tmdbId,
+    int? tvdbId,
+    required String tier,
+    String language = 'en',
+  }) async {
     final r = await _dio.post<Map<String, dynamic>>('/grab',
         data: <String, dynamic>{
           'type': type,
           'tier': tier,
           'tmdbId': tmdbId,
           'tvdbId': tvdbId,
+          'language': language,
         });
     return r.data!;
   }
@@ -255,6 +270,11 @@ class Api {
   Future<void> qbtPause() async => _dio.post<dynamic>('/qbt/pause');
   Future<void> qbtResume() async => _dio.post<dynamic>('/qbt/resume');
 
+  Future<void> reorderTorrent(String hash, int oldIdx, int newIdx) async {
+    await _dio.post<dynamic>('/qbt/reorder',
+        data: <String, dynamic>{'hash': hash, 'old_idx': oldIdx, 'new_idx': newIdx});
+  }
+
   Future<List<dynamic>> listUsers() async {
     final r = await _dio.get<Map<String, dynamic>>('/users');
     return r.data!['users'] as List<dynamic>;
@@ -289,5 +309,118 @@ class Api {
 
   Future<void> deleteUser(String username) async {
     await _dio.delete<dynamic>('/users/$username');
+  }
+
+  Future<String> chat(List<Map<String, String>> messages) async {
+    final r = await _dio.post<Map<String, dynamic>>('/chat',
+        data: <String, dynamic>{'messages': messages});
+    return (r.data!['reply'] as String?) ?? '';
+  }
+
+  Future<Map<String, dynamic>> speedtest() async {
+    final r = await _dio.get<Map<String, dynamic>>(
+      '/speedtest',
+      options: Options(receiveTimeout: const Duration(seconds: 90)),
+    );
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<List<dynamic>> notifications() async {
+    final r = await _dio.get<Map<String, dynamic>>('/notifications');
+    return (r.data?['notifications'] as List<dynamic>?) ?? <dynamic>[];
+  }
+
+  Future<void> clearNotifications() async {
+    await _dio.post<dynamic>('/notifications/clear');
+  }
+
+  Future<void> triggerNewEpisodeCheck() async {
+    await _dio.post<dynamic>('/cron/new-episodes');
+  }
+
+  Future<Map<String, dynamic>> healthReport() async {
+    final r = await _dio.get<Map<String, dynamic>>('/health/report');
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> triggerHealthCheck() async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/health/check',
+      options: Options(receiveTimeout: const Duration(minutes: 5)),
+    );
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> swapTorrent({
+    required String type,
+    required int itemId,
+    required int queueItemId,
+    required String guid,
+    required int indexerId,
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>('/grab/swap',
+        data: <String, dynamic>{
+          'type': type,
+          'item_id': itemId,
+          'queue_item_id': queueItemId,
+          'guid': guid,
+          'indexer_id': indexerId,
+        });
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> itemDetail({
+    required String type,
+    int tmdbId = 0,
+    int tvdbId = 0,
+  }) async {
+    final r = await _dio.get<Map<String, dynamic>>('/detail',
+        queryParameters: <String, dynamic>{
+          'type': type,
+          'tmdb_id': tmdbId,
+          'tvdb_id': tvdbId,
+        });
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> healthResolve(Map<String, dynamic> item) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/health/resolve',
+      data: <String, dynamic>{'item': item},
+      options: Options(receiveTimeout: const Duration(minutes: 2)),
+    );
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> tmdbMovieDetails(int tmdbId,
+      {String language = 'en-US'}) async {
+    final r = await _tmdbDio.get<Map<String, dynamic>>(
+      '/3/movie/$tmdbId',
+      queryParameters: <String, dynamic>{
+        'append_to_response': 'credits',
+        'language': language,
+      },
+      options: Options(
+          headers: <String, String>{
+            'Authorization': 'Bearer $kTmdbReadAccessToken',
+          }),
+    );
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> tmdbTvDetails(int tmdbId,
+      {String language = 'en-US'}) async {
+    final r = await _tmdbDio.get<Map<String, dynamic>>(
+      '/3/tv/$tmdbId',
+      queryParameters: <String, dynamic>{
+        'append_to_response': 'credits',
+        'language': language,
+      },
+      options: Options(
+          headers: <String, String>{
+            'Authorization': 'Bearer $kTmdbReadAccessToken',
+          }),
+    );
+    return r.data ?? <String, dynamic>{};
   }
 }
