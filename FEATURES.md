@@ -78,7 +78,7 @@ Complete list of everything the app and gateway can do.
 ### Admin Features (admins group only)
 | Feature | Access |
 |---------|--------|
-| Plex Sessions | View active streams, kill a session |
+| Media Sessions | View active streams from Plex + Jellyfin, kill a session; each session shows its source (PLEX / JELLYFIN) |
 | Speed Limits | Set qBittorrent download/upload caps (Mbit/s) |
 | Pause / Resume all | One-tap pause or resume all torrents |
 | User Management | Create, edit, delete users; set admin role; superadmins also see an "AI access" toggle |
@@ -117,8 +117,10 @@ Complete list of everything the app and gateway can do.
 | DELETE | `/library` | admin | Delete item + files |
 | GET | `/detail` | user | Full item metadata (Radarr/Sonarr + TMDb) |
 | GET | `/diskspace` | user | Free/total disk space |
-| GET | `/plex/sessions` | admin | Active Plex streams |
-| DELETE | `/plex/sessions/{key}` | admin | Kill a Plex session |
+| GET | `/plex/sessions` | admin | Active Plex streams (legacy, kept for compatibility) |
+| DELETE | `/plex/sessions/{key}` | admin | Kill a Plex session (legacy) |
+| GET | `/sessions` | admin | Active streams from Plex + Jellyfin; each item has `source: "plex"\|"jellyfin"` |
+| DELETE | `/sessions/{source}/{key}` | admin | Kill a session on plex or jellyfin |
 | GET | `/qbt/limits` | admin | Current speed limits |
 | POST | `/qbt/limits` | admin | Set speed limits |
 | POST | `/qbt/pause` | admin | Pause all torrents |
@@ -182,6 +184,25 @@ Sk-CzTorrent credentials are stored in `.env` (gitignored). The gateway auto-reg
    - P4280 (TheTVDB ID) for TV shows
    - P4983 (TMDb TV series ID) for TV shows not in P4280
    - P4947 (TMDb movie ID) for movies
+
+---
+
+## Setup: Jellyfin API Key
+
+Jellyfin runs in Docker (no apt install needed — the Docker image handles all dependencies).
+
+**First-time setup:**
+1. Start the container: `docker compose up -d jellyfin`
+2. Open `http://<NAS-IP>:8096` and complete the setup wizard (create admin account, add `/data/media` as a library)
+3. Go to **Dashboard → API Keys** (or `http://<NAS-IP>:8096/web/#/apikeys`)
+4. Click **+** to create a new key — name it e.g. `nas-gateway`
+5. Copy the key and add it to `~/Desktop/nas/.env`:
+   ```
+   JELLYFIN_API_KEY=<paste key here>
+   ```
+6. Restart the gateway: `docker compose up -d ai-gateway`
+
+Jellyfin sessions will now appear in the app's **Media sessions** screen alongside Plex sessions. If `JELLYFIN_API_KEY` is empty, Jellyfin sessions are silently skipped (Plex sessions still show normally).
 
 ---
 
