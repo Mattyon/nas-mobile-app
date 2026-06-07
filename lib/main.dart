@@ -382,7 +382,15 @@ class _LoginScreenState extends State<LoginScreen> with LangAware {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(tr('app')), actions: const <Widget>[LangButton()]),
+      appBar: AppBar(title: Text(tr('app')), actions: <Widget>[
+        IconButton(
+          icon: const Icon(Icons.help_outline),
+          tooltip: tr('helpConnect'),
+          onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const HelpScreen())),
+        ),
+        const LangButton(),
+      ]),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
@@ -568,6 +576,9 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                   } else if (v == 'ai') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const AiChatsListScreen()));
+                  } else if (v == 'help') {
+                    Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => const HelpScreen()));
                   } else if (v == 'sessions') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const SessionsScreen()));
@@ -668,6 +679,14 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                           size: 20),
                       const SizedBox(width: 12),
                       Text(mode == ThemeMode.dark ? tr('lightMode') : tr('darkMode')),
+                    ]),
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'help',
+                    child: Row(children: <Widget>[
+                      const Icon(Icons.help_outline, size: 20),
+                      const SizedBox(width: 12),
+                      Text(tr('helpConnect')),
                     ]),
                   ),
                   PopupMenuItem<String>(
@@ -1684,6 +1703,184 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
 }
 
 // ----------------------------- Plex sessions (admin) ------------------------
+// ----------------------------- Help / connect --------------------------------
+class HelpScreen extends StatelessWidget {
+  const HelpScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: Text(tr('helpConnect'))),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: <Widget>[
+          // --- Server address card ---
+          Card(
+            color: cs.primaryContainer,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(children: <Widget>[
+                    Icon(Icons.dns_outlined, color: cs.onPrimaryContainer),
+                    const SizedBox(width: 8),
+                    Text('Jellyfin server address',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: cs.onPrimaryContainer)),
+                  ]),
+                  const SizedBox(height: 12),
+                  _AddressRow(
+                    label: 'Home network',
+                    address: 'http://192.168.50.141:8096',
+                    icon: Icons.home_outlined,
+                  ),
+                  const SizedBox(height: 8),
+                  _AddressRow(
+                    label: 'Anywhere (Tailscale)',
+                    address: 'http://100.91.166.12:8096',
+                    icon: Icons.vpn_lock_outlined,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // --- Smart TV ---
+          _HelpSection(
+            icon: Icons.tv,
+            title: 'Smart TV  (LG · Samsung)',
+            steps: const <String>[
+              'Open the App Store on your TV.',
+              'Search for "Jellyfin" and install it.',
+              'Open Jellyfin and tap "Add server".',
+              'Enter the server address above (home network if on the same Wi-Fi, Tailscale address if remote).',
+              'Log in with the username and password given to you by the admin.',
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // --- Phone / tablet ---
+          _HelpSection(
+            icon: Icons.phone_android,
+            title: 'Phone & tablet  (Android · iOS)',
+            steps: const <String>[
+              'Install the Jellyfin app from Google Play or the App Store.',
+              'Tap "Add server" and enter the server address above.',
+              'Log in with your credentials.',
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // --- Browser ---
+          _HelpSection(
+            icon: Icons.open_in_browser,
+            title: 'Browser',
+            steps: const <String>[
+              'Open any browser on your computer or phone.',
+              'Go to http://192.168.50.141:8096 (home) or http://100.91.166.12:8096 (Tailscale).',
+              'Log in with your credentials.',
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // --- Remote access note ---
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Icon(Icons.info_outline, size: 20, color: Colors.blueAccent),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Remote access (outside home) requires Tailscale to be installed and connected on your device. Ask the admin for an invite.',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddressRow extends StatelessWidget {
+  const _AddressRow({required this.label, required this.address, required this.icon});
+  final String label;
+  final String address;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return Row(
+      children: <Widget>[
+        Icon(icon, size: 16, color: cs.onPrimaryContainer.withValues(alpha: 0.7)),
+        const SizedBox(width: 6),
+        Text('$label: ', style: TextStyle(fontSize: 13, color: cs.onPrimaryContainer.withValues(alpha: 0.8))),
+        Expanded(
+          child: Text(address,
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onPrimaryContainer,
+                  fontFamily: 'monospace')),
+        ),
+      ],
+    );
+  }
+}
+
+class _HelpSection extends StatelessWidget {
+  const _HelpSection({required this.icon, required this.title, required this.steps});
+  final IconData icon;
+  final String title;
+  final List<String> steps;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(children: <Widget>[
+              Icon(icon, size: 20),
+              const SizedBox(width: 8),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+            ]),
+            const SizedBox(height: 10),
+            ...steps.asMap().entries.map((MapEntry<int, String> e) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text('${e.key + 1}. ',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 13)),
+                      Expanded(
+                          child: Text(e.value,
+                              style: const TextStyle(fontSize: 13))),
+                    ],
+                  ),
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ----------------------------- Sessions (admin) ------------------------------
 class SessionsScreen extends StatefulWidget {
   const SessionsScreen({super.key});
   @override
