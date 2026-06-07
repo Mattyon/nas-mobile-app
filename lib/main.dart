@@ -159,6 +159,7 @@ class NotificationBell extends StatefulWidget {
 
 class _NotificationBellState extends State<NotificationBell> with LangAware {
   List<dynamic> _items = <dynamic>[];
+  int _unreadCount = 0;
   Timer? _timer;
 
   @override
@@ -176,8 +177,10 @@ class _NotificationBellState extends State<NotificationBell> with LangAware {
 
   Future<void> _poll() async {
     try {
-      final List<dynamic> n = await Api.I.notifications();
-      if (mounted) setState(() => _items = n);
+      final Map<String, dynamic> data = await Api.I.notifications();
+      final List<dynamic> items = (data['notifications'] as List<dynamic>?) ?? <dynamic>[];
+      final int unread = (data['unread_count'] as int?) ?? 0;
+      if (mounted) setState(() { _items = items; _unreadCount = unread; });
     } catch (_) {}
   }
 
@@ -189,6 +192,9 @@ class _NotificationBellState extends State<NotificationBell> with LangAware {
   }
 
   void _show() {
+    // Clear unread badge immediately; fire-and-forget to server.
+    setState(() => _unreadCount = 0);
+    Api.I.markNotificationsRead().catchError((_) {});
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -255,7 +261,7 @@ class _NotificationBellState extends State<NotificationBell> with LangAware {
           onPressed: _show,
           tooltip: tr('notifications'),
         ),
-        if (_items.isNotEmpty)
+        if (_unreadCount > 0)
           Positioned(
             right: 8, top: 8,
             child: Container(
@@ -266,7 +272,7 @@ class _NotificationBellState extends State<NotificationBell> with LangAware {
               ),
               constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
               child: Text(
-                _items.length > 9 ? '9+' : '${_items.length}',
+                _unreadCount > 9 ? '9+' : '$_unreadCount',
                 style: const TextStyle(color: Colors.white, fontSize: 9,
                     fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
@@ -1322,12 +1328,53 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     return items;
   }
 
-  Widget _tile(Map<String, dynamic> t, {Key? key, int? dragIndex}) {
+  Future<void> _confirmCancel(Map<String, dynamic> t) async {
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('Stop download?'),
+        content: Text('Remove "${t['name']}" and delete all partial files from disk?'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(tr('cancel')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Stop'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final String? hash = t['hash']?.toString();
+    if (hash == null) return;
+    setState(() => _items.removeWhere(
+        (dynamic e) => (e as Map<String, dynamic>)['hash'] == hash));
+    try {
+      await Api.I.cancelDownload(hash);
+    } catch (_) {}
+    _refresh();
+  }
+
+  Widget _tile(Map<String, dynamic> t,
+      {Key? key, int? dragIndex, bool cancellable = false}) {
     final double pct = (t['progress'] as num?)?.toDouble() ?? 0;
     final bool failed = _isFailed(t['state']?.toString() ?? '');
     final TextStyle? red = failed ? const TextStyle(color: Colors.redAccent) : null;
     return ListTile(
       key: key,
+      leading: cancellable
+          ? IconButton(
+              icon: const Icon(Icons.stop_circle_outlined,
+                  color: Colors.redAccent, size: 26),
+              onPressed: () => _confirmCancel(t),
+              tooltip: 'Stop download',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            )
+          : null,
       title: Text(t['name']?.toString() ?? '',
           maxLines: 1, overflow: TextOverflow.ellipsis, style: red),
       subtitle: Column(
@@ -1367,7 +1414,8 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     } catch (_) {}
   }
 
-  Widget _list(List<Map<String, dynamic>> items, {bool reorderable = false}) {
+  Widget _list(List<Map<String, dynamic>> items,
+      {bool reorderable = false, bool cancellable = false}) {
     if (items.isEmpty) {
       return ListView(children: <Widget>[
         const SizedBox(height: 120),
@@ -1383,12 +1431,14 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           items[i],
           key: ValueKey(items[i]['hash'] ?? i.toString()),
           dragIndex: i,
+          cancellable: cancellable,
         ),
       );
     }
     return ListView.builder(
       itemCount: items.length,
-      itemBuilder: (BuildContext context, int i) => _tile(items[i]),
+      itemBuilder: (BuildContext context, int i) =>
+          _tile(items[i], cancellable: cancellable),
     );
   }
 
@@ -1421,7 +1471,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           child: TabBarView(
             controller: _tabs,
             children: <Widget>[
-              _list(active, reorderable: true),
+              _list(active, reorderable: true, cancellable: true),
               RefreshIndicator(onRefresh: _refresh, child: _list(finished)),
             ],
           ),

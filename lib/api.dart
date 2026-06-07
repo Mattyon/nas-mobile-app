@@ -366,13 +366,21 @@ class Api {
     return r.data ?? <String, dynamic>{};
   }
 
-  Future<List<dynamic>> notifications() async {
+  Future<Map<String, dynamic>> notifications() async {
     final r = await _dio.get<Map<String, dynamic>>('/notifications');
-    return (r.data?['notifications'] as List<dynamic>?) ?? <dynamic>[];
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<void> markNotificationsRead() async {
+    await _dio.post<dynamic>('/notifications/read');
   }
 
   Future<void> clearNotifications() async {
     await _dio.post<dynamic>('/notifications/clear');
+  }
+
+  Future<void> cancelDownload(String hash) async {
+    await _dio.delete<dynamic>('/downloads/$hash');
   }
 
   Future<void> triggerNewEpisodeCheck() async {
