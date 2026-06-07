@@ -222,10 +222,17 @@ class _NotificationBellState extends State<NotificationBell> with LangAware {
                       itemBuilder: (BuildContext c, int i) {
                         final Map<String, dynamic> n =
                             _items[i] as Map<String, dynamic>;
+                        final bool cs = lang.value == 'cs';
+                        final String displayTitle = cs
+                            ? (n['title_cs']?.toString() ?? n['title']?.toString() ?? '')
+                            : (n['title']?.toString() ?? '');
+                        final String displayBody = cs
+                            ? (n['body_cs']?.toString() ?? n['body']?.toString() ?? '')
+                            : (n['body']?.toString() ?? '');
                         return ListTile(
-                          title: Text(n['title']?.toString() ?? '',
+                          title: Text(displayTitle,
                               style: const TextStyle(fontWeight: FontWeight.w500)),
-                          subtitle: Text(n['body']?.toString() ?? '',
+                          subtitle: Text(displayBody,
                               maxLines: 3, overflow: TextOverflow.ellipsis),
                           dense: true,
                         );

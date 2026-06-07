@@ -40,6 +40,10 @@
 - [x] **AI menu gated on superadmin**: AI Chats only appears in the hamburger for users with `ai_access`
 - [x] **User management AI toggle**: admins see users' `is_ai_access` state; only superadmins can change it
 - [x] Library endpoint enriched: now returns `tmdbId`, `tvdbId`, `overview`, `type` so the detail view can open from library items
+- [x] **Bilingual notifications**: Ollama translates every notification title+body to Czech; stored as `title_cs`/`body_cs`; in-app bell displays Czech when app language is Czech; ntfy push includes both languages
+- [x] **AI chat: no notification when chat is open** — `active: true` field sent with message suppresses ntfy push and unread flag server-side
+- [x] **AI chat: auto-title** — Ollama generates a 3-6 word conversation title from the first message; AppBar updates immediately via `new_title` in the response
+- [x] **AI chat: unread indicator** — blue dot + bold title in chat list for conversations with unread AI responses; cleared when chat is opened
 
 ## Pending / Backlog
 

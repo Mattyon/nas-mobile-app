@@ -141,9 +141,10 @@ Complete list of everything the app and gateway can do.
 - **TV notification debounce**: per-series 45-second timer batches multiple episode-import webhooks into one notification (e.g. "The Office (2005) — S02E01–E06 (6 episodes) ready to watch") instead of one push per episode.
 - **Stall detection**: `_check_series_grab_async` distinguishes stalled (no progress) from actively downloading torrents. Sends a "⚠️ Stalled" ntfy push and records a notification if all queue items for a series are stalled.
 - **Stall recovery on restart**: `_recover_stalled_grabs()` runs 5 minutes after gateway startup, re-scans series added in the last 35 minutes with all-stalled queues (handles the case where the daemon thread was killed by a container restart).
+- **Bilingual notifications (EN + CS)**: every `_store_notification` call asks Ollama to translate the title and body to Czech. The in-memory notification stores both `title`/`body` (English) and `title_cs`/`body_cs` (Czech). The ntfy push includes both languages in the body (`English body\n🇨🇿 Czech body`). The in-app bell shows the language that matches the current app language setting. Falls back silently to English-only when Ollama is unavailable.
 
 ### Persistence
-- **AI chat history** stored in SQLite (`/app/data/ai_chats.db`, mounted from `./ai-gateway/data` on the host). Schema: `chats` (id, username, title, created_at, updated_at) + `messages` (id, chat_id, role, content, ts). Conversations survive gateway restarts and are accessible from any device.
+- **AI chat history** stored in SQLite (`/app/data/ai_chats.db`, mounted from `./ai-gateway/data` on the host). Schema: `chats` (id, username, title, has_unread, created_at, updated_at) + `messages` (id, chat_id, role, content, ts). Conversations survive gateway restarts and are accessible from any device.
 
 ### Ranking
 - Heuristic score: resolution + source + HDR + seeders + size penalty + indexer trust
