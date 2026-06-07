@@ -128,6 +128,12 @@ const Map<String, Map<String, String>> _strings = {
     'aiFixResult': 'AI fixed it',
     'aiFixFailed': 'Could not auto-fix',
     'ok': 'OK',
+    'newChat': 'New chat',
+    'noChats': 'No conversations yet',
+    'renameChat': 'Rename',
+    'deleteChat': 'Delete chat',
+    'aiChats': 'AI Chats',
+    'chatHistory': 'Chat history',
   },
   'cs': {
     'app': 'Mattyho NAS',
@@ -253,6 +259,12 @@ const Map<String, Map<String, String>> _strings = {
     'aiFixResult': 'AI to opravila',
     'aiFixFailed': 'Nelze automaticky opravit',
     'ok': 'OK',
+    'newChat': 'Nový chat',
+    'noChats': 'Žádné konverzace',
+    'renameChat': 'Přejmenovat',
+    'deleteChat': 'Smazat chat',
+    'aiChats': 'AI Chaty',
+    'chatHistory': 'Historie chatů',
   },
 };
 

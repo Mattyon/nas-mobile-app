@@ -25,6 +25,7 @@ class Api {
   String? username;
   String? displayName;
   List<String> groups = <String>[];
+  bool isSuperadmin = false;
 
   bool get isLoggedIn => token != null;
   bool get isAdmin => groups.contains('admins');
@@ -39,6 +40,7 @@ class Api {
     groups = prefs.getStringList('groups') ?? <String>[];
     username = prefs.getString('username');
     displayName = prefs.getString('displayName');
+    isSuperadmin = prefs.getBool('isSuperadmin') ?? false;
     token = await _secure.read(key: 'token');
     _build();
   }
@@ -94,6 +96,7 @@ class Api {
     final dynamic dn = data['displayname'];
     displayName = dn is String && dn.isNotEmpty ? dn : username;
     groups = List<String>.from(data['groups'] as List<dynamic>? ?? <dynamic>[]);
+    isSuperadmin = (data['is_superadmin'] as bool?) ?? false;
     _build();
   }
 
@@ -103,6 +106,7 @@ class Api {
     await prefs.setStringList('groups', groups);
     await prefs.setString('username', username ?? '');
     await prefs.setString('displayName', displayName ?? username ?? '');
+    await prefs.setBool('isSuperadmin', isSuperadmin);
   }
 
   /// Returns true if credentials are stored and not expired.
@@ -192,6 +196,7 @@ class Api {
     username = null;
     displayName = null;
     groups = <String>[];
+    isSuperadmin = false;
     await _secure.delete(key: 'token');
     _build();
   }
@@ -285,12 +290,14 @@ class Api {
     required String password,
     String displayname = '',
     bool isAdmin = false,
+    bool isAiAccess = false,
   }) async {
     await _dio.post<dynamic>('/users', data: <String, dynamic>{
       'username': username,
       'password': password,
       'displayname': displayname,
       'is_admin': isAdmin,
+      'is_ai_access': isAiAccess,
     });
   }
 
@@ -299,11 +306,13 @@ class Api {
     String? password,
     String displayname = '',
     bool isAdmin = false,
+    bool isAiAccess = false,
   }) async {
     await _dio.put<dynamic>('/users/$username', data: <String, dynamic>{
       if (password != null) 'password': password,
       'displayname': displayname,
       'is_admin': isAdmin,
+      'is_ai_access': isAiAccess,
     });
   }
 
@@ -311,10 +320,41 @@ class Api {
     await _dio.delete<dynamic>('/users/$username');
   }
 
-  Future<String> chat(List<Map<String, String>> messages) async {
-    final r = await _dio.post<Map<String, dynamic>>('/chat',
-        data: <String, dynamic>{'messages': messages});
-    return (r.data!['reply'] as String?) ?? '';
+  // ---- AI chat history -------------------------------------------------------
+
+  Future<List<dynamic>> listChats() async {
+    final r = await _dio.get<Map<String, dynamic>>('/ai/chats');
+    return r.data!['chats'] as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createChat({String title = 'New chat'}) async {
+    final r = await _dio.post<Map<String, dynamic>>('/ai/chats',
+        data: <String, dynamic>{'title': title});
+    return r.data!;
+  }
+
+  Future<Map<String, dynamic>> getChat(String chatId) async {
+    final r = await _dio.get<Map<String, dynamic>>('/ai/chats/$chatId');
+    return r.data!;
+  }
+
+  Future<Map<String, dynamic>> sendChatMessage(
+      String chatId, String content) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/ai/chats/$chatId/message',
+      data: <String, dynamic>{'content': content},
+      options: Options(receiveTimeout: const Duration(minutes: 3)),
+    );
+    return r.data!;
+  }
+
+  Future<void> renameChat(String chatId, String title) async {
+    await _dio.patch<dynamic>('/ai/chats/$chatId',
+        data: <String, dynamic>{'title': title});
+  }
+
+  Future<void> deleteChat(String chatId) async {
+    await _dio.delete<dynamic>('/ai/chats/$chatId');
   }
 
   Future<Map<String, dynamic>> speedtest() async {
