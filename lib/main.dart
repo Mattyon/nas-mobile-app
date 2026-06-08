@@ -761,9 +761,9 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: <Widget>[
-              Text('${pct.toStringAsFixed(0)}% of storage used',
+              Text('${pct.toStringAsFixed(0)}% ${tr('storageUsedSuffix')}',
                   style: const TextStyle(fontSize: 12)),
-              Text('${_freeStr(free)} free', style: const TextStyle(fontSize: 12)),
+              Text('${_freeStr(free)} ${tr('free')}', style: const TextStyle(fontSize: 12)),
             ],
           ),
           const SizedBox(height: 4),
@@ -942,7 +942,7 @@ class _SessionsScreenState extends State<SessionsScreen> with LangAware {
                               if (s['player'] != null) s['player'].toString(),
                               if (s['address'] != null) '${s['address']}${loc.isNotEmpty ? ' ($loc)' : ''}',
                               if (bw != null) '${(bw / 1000).toStringAsFixed(1)} Mbit/s',
-                              transcode ? 'transcode' : 'direct',
+                              transcode ? tr('transcode') : tr('direct'),
                             ].join('  •  ')),
                           ],
                         ),
