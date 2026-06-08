@@ -30,7 +30,14 @@ Complete list of everything the app and gateway can do.
   | Best | Highest quality, BluRay/Remux preferred |
   | 🇨🇿 Czech audio | Balanced quality, prefers Czech-dubbed releases |
 - Movies: heuristic ranking → Ollama re-ranking of top 8 candidates → Radarr grab
-- TV shows: Sonarr `SeriesSearch` for all monitored episodes
+- TV shows (English): Sonarr `SeriesSearch` for all monitored episodes
+- **TV shows (Czech)**: Prowlarr direct search for season/series packs on sktorrent.eu → Ollama picks best → added directly to qBittorrent; Sonarr `DownloadedEpisodesScan` triggered on completion
+  - Czech TV packs are typically complete-series archives that Sonarr's episode-level search never finds; Prowlarr direct search is required
+  - Ollama selects the best candidate (prefers complete packs, dual CZ+EN audio, higher seeders)
+  - Background monitor polls qBittorrent until download finishes, then triggers Sonarr import and sends a push notification
+  - Duplicate add protection: if a Czech pack for the same series is already downloading, reattaches the monitor instead of adding a duplicate
+  - Timestamp-based torrent hash lookup: records timestamp before add, picks the torrent with `added_on ≥ timestamp` — unaffected by torrent internal name vs. Prowlarr title mismatches
+- English and Czech flags are tracked independently per item; English flag is never cleared by a Czech grab attempt
 - Grab registry: records requested tier per item for post-download quality checks
 
 ### Downloads Screen
@@ -141,6 +148,7 @@ Complete list of everything the app and gateway can do.
 - **TV notification debounce**: per-series 45-second timer batches multiple episode-import webhooks into one notification (e.g. "The Office (2005) — S02E01–E06 (6 episodes) ready to watch") instead of one push per episode.
 - **Stall detection**: `_check_series_grab_async` distinguishes stalled (no progress) from actively downloading torrents. Sends a "⚠️ Stalled" ntfy push and records a notification if all queue items for a series are stalled.
 - **Stall recovery on restart**: `_recover_stalled_grabs()` runs 5 minutes after gateway startup, re-scans series added in the last 35 minutes with all-stalled queues (handles the case where the daemon thread was killed by a container restart).
+- **Czech artifact cleanup**: on every gateway startup, `_cleanup_all_czech_artifacts()` scans Sonarr for any `__Czech Auto Grab__` custom formats and `__Czech Temp N__` quality profiles left over from interrupted grab attempts, reverts affected series to their original profile, and deletes them. Also runs at the start of each Czech grab to prevent conflicts.
 - **Bilingual notifications (EN + CS)**: every `_store_notification` call asks Ollama to translate the title and body to Czech. The in-memory notification stores both `title`/`body` (English) and `title_cs`/`body_cs` (Czech). The ntfy push includes both languages in the body (`English body\n🇨🇿 Czech body`). The in-app bell shows the language that matches the current app language setting. Falls back silently to English-only when Ollama is unavailable.
 
 ### Persistence
