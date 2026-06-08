@@ -80,6 +80,9 @@ const Map<String, Map<String, String>> _strings = {
     'inLibraryBoth': 'In library',
     'appLanguage': 'app language',
     'langMismatch': 'Wrong language',
+    'swap': 'Swap',
+    'swapStarted': 'Alternative download started',
+    'noAlternative': 'No seeded alternative found',
   },
   'cs': {
     'app': 'Mattyho NAS',
@@ -157,6 +160,9 @@ const Map<String, Map<String, String>> _strings = {
     'inLibraryBoth': 'V knihovně',
     'appLanguage': 'jazyk aplikace',
     'langMismatch': 'Chybný jazyk',
+    'swap': 'Vyměnit',
+    'swapStarted': 'Alternativní stahování spuštěno',
+    'noAlternative': 'Žádná alternativa se seedery',
   },
 };
 

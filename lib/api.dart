@@ -281,6 +281,25 @@ class Api {
         data: <String, dynamic>{'hash': hash, 'old_idx': oldIdx, 'new_idx': newIdx});
   }
 
+  Future<Map<String, dynamic>> swapTorrent({
+    required String type,
+    required int itemId,
+    required int queueItemId,
+    required String guid,
+    required int indexerId,
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>('/grab/swap',
+        data: <String, dynamic>{
+          'type': type,
+          'item_id': itemId,
+          'queue_item_id': queueItemId,
+          'guid': guid,
+          'indexer_id': indexerId,
+        });
+    return r.data ?? <String, dynamic>{};
+  }
+
+
   Future<List<dynamic>> listUsers() async {
     final r = await _dio.get<Map<String, dynamic>>('/users');
     return r.data!['users'] as List<dynamic>;
