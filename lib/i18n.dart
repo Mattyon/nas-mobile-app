@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 /// Minimal, codegen-free i18n: a notifier holds the current language; tr() reads it.
 final ValueNotifier<String> lang = ValueNotifier<String>('en');
@@ -259,3 +259,22 @@ const Map<String, Map<String, String>> _strings = {
 String tr(String key) => _strings[lang.value]?[key] ?? key;
 
 void toggleLang() => lang.value = lang.value == 'en' ? 'cs' : 'en';
+
+/// Rebuilds a screen's State when the language changes — WITHOUT remounting.
+mixin LangAware<T extends StatefulWidget> on State<T> {
+  void _onLangChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    lang.addListener(_onLangChanged);
+  }
+
+  @override
+  void dispose() {
+    lang.removeListener(_onLangChanged);
+    super.dispose();
+  }
+}

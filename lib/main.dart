@@ -49,26 +49,6 @@ class NasApp extends StatelessWidget {
   }
 }
 
-/// Rebuilds a screen's State when the language changes — WITHOUT remounting, so
-/// screen state (search results, current tab, text fields) is preserved.
-mixin LangAware<T extends StatefulWidget> on State<T> {
-  void _onLangChanged() {
-    if (mounted) setState(() {});
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    lang.addListener(_onLangChanged);
-  }
-
-  @override
-  void dispose() {
-    lang.removeListener(_onLangChanged);
-    super.dispose();
-  }
-}
-
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
   @override
