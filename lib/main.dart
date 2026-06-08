@@ -541,6 +541,9 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                   if (v == 'ai') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const AiChatScreen()));
+                  } else if (v == 'speedtest') {
+                    Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => const SpeedtestScreen()));
                   } else if (v == 'neweps') {
                     try {
                       await Api.I.triggerNewEpisodeCheck();
@@ -614,6 +617,15 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                         const Icon(Icons.smart_toy_outlined, size: 20),
                         const SizedBox(width: 12),
                         Text(tr('aiAssistant')),
+                      ]),
+                    ),
+                  if (Api.I.isAdmin)
+                    PopupMenuItem<String>(
+                      value: 'speedtest',
+                      child: Row(children: <Widget>[
+                        const Icon(Icons.network_check, size: 20),
+                        const SizedBox(width: 12),
+                        Text(tr('speedtest')),
                       ]),
                     ),
                   PopupMenuItem<String>(
@@ -2145,6 +2157,130 @@ class _AiChatScreenState extends State<AiChatScreen> with LangAware {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ----------------------------- Speed test (admin) ---------------------------
+class SpeedtestScreen extends StatefulWidget {
+  const SpeedtestScreen({super.key});
+  @override
+  State<SpeedtestScreen> createState() => _SpeedtestScreenState();
+}
+
+class _SpeedtestScreenState extends State<SpeedtestScreen> with LangAware {
+  Map<String, dynamic>? _result;
+  bool _running = false;
+  String? _error;
+
+  Future<void> _run() async {
+    setState(() { _running = true; _error = null; _result = null; });
+    try {
+      final Map<String, dynamic> r = await Api.I.speedtest();
+      if (mounted) setState(() { _result = r; _running = false; });
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _running = false; });
+    }
+  }
+
+  Widget _statRow(IconData icon, String label, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: <Widget>[
+          Icon(icon, color: color, size: 28),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(children: <Widget>[
+          const Icon(Icons.network_check, size: 20),
+          const SizedBox(width: 8),
+          Text(tr('speedtest')),
+        ]),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              if (_running) ...<Widget>[
+                const SizedBox(
+                  width: 72, height: 72,
+                  child: CircularProgressIndicator(strokeWidth: 5)),
+                const SizedBox(height: 24),
+                Text(tr('speedtestRunning'), textAlign: TextAlign.center),
+              ] else if (_result != null) ...<Widget>[
+                _statRow(Icons.south, tr('downloadSpeed'),
+                    '${_result!['download_mbps']} Mbit/s', Colors.lightBlueAccent),
+                const Divider(),
+                _statRow(Icons.north, tr('uploadSpeed'),
+                    '${_result!['upload_mbps']} Mbit/s', Colors.greenAccent),
+                const Divider(),
+                _statRow(Icons.timer_outlined, tr('ping'),
+                    '${_result!['ping_ms']} ms', Colors.orangeAccent),
+                const Divider(),
+                if ((_result!['server'] as String?)?.isNotEmpty == true)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: <Widget>[
+                        const Icon(Icons.dns_outlined, size: 20, color: Colors.grey),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text('${tr('testServer')}: ${_result!['server']}')),
+                      ],
+                    ),
+                  ),
+                if ((_result!['isp'] as String?)?.isNotEmpty == true)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: <Widget>[
+                        const Icon(Icons.router_outlined, size: 20, color: Colors.grey),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text('${tr('isp')}: ${_result!['isp']}')),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 16),
+                FilledButton.tonal(
+                  onPressed: _run,
+                  child: Text(tr('runSpeedtest')),
+                ),
+              ] else ...<Widget>[
+                const Icon(Icons.network_check, size: 72, color: Colors.grey),
+                const SizedBox(height: 24),
+                if (_error != null) ...<Widget>[
+                  Text(_error!, style: const TextStyle(color: Colors.redAccent),
+                      textAlign: TextAlign.center),
+                  const SizedBox(height: 16),
+                ],
+                FilledButton.icon(
+                  onPressed: _run,
+                  icon: const Icon(Icons.play_arrow),
+                  label: Text(tr('runSpeedtest')),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
