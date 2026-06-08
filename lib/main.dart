@@ -240,6 +240,9 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
   String _type = 'movie';
   List<dynamic> _results = <dynamic>[];
   bool _busy = false;
+  String? _grabbing; // key of the item currently being requested
+
+  String _key(Map<String, dynamic> m) => '$_type-${m['tmdbId'] ?? m['tvdbId']}';
 
   Future<void> _run() async {
     if (_q.text.trim().isEmpty) return;
@@ -277,6 +280,7 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
       ),
     );
     if (tier == null) return;
+    setState(() => _grabbing = _key(item));
     try {
       await Api.I.grab(
         type: _type,
@@ -287,6 +291,8 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
       _snack(tr('added'));
     } catch (_) {
       _snack(tr('error'));
+    } finally {
+      if (mounted) setState(() => _grabbing = null);
     }
   }
 
@@ -322,7 +328,10 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
                   ButtonSegment<String>(value: 'tv', label: Text(tr('tv'))),
                 ],
                 selected: <String>{_type},
-                onSelectionChanged: (Set<String> s) => setState(() => _type = s.first),
+                onSelectionChanged: (Set<String> s) {
+                  setState(() => _type = s.first);
+                  _run(); // re-search for the newly selected type (no-op if query empty)
+                },
               ),
             ],
           ),
@@ -335,13 +344,18 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
                   itemCount: _results.length,
                   itemBuilder: (BuildContext context, int i) {
                     final Map<String, dynamic> m = _results[i] as Map<String, dynamic>;
+                    final bool busy = _grabbing == _key(m);
                     return ListTile(
                       leading: PosterImage(m['poster'] as String?),
                       title: Text(m['title']?.toString() ?? ''),
                       subtitle: Text(m['year']?.toString() ?? ''),
                       trailing: FilledButton.tonal(
-                        onPressed: () => _grab(m),
-                        child: Text(tr('download')),
+                        onPressed: busy ? null : () => _grab(m),
+                        child: busy
+                            ? const SizedBox(
+                                height: 18, width: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2))
+                            : Text(tr('download')),
                       ),
                     );
                   },
