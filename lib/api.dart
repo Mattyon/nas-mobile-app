@@ -20,7 +20,7 @@ class Api {
     connectTimeout: const Duration(seconds: 15),
     receiveTimeout: const Duration(seconds: 30),
   ));
-  String baseUrl = 'https://nas.mattyzem.com'; // public gateway via Cloudflare Tunnel
+  String baseUrl = 'http://100.91.166.12:8000'; // tailnet IP of the NAS, gateway port
   String? token;
   String? username;
   String? displayName;
@@ -412,6 +412,52 @@ class Api {
       '/health/resolve',
       data: <String, dynamic>{'item': item},
       options: Options(receiveTimeout: const Duration(minutes: 2)),
+    );
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> itemDetail({
+    required String type,
+    int tmdbId = 0,
+    int tvdbId = 0,
+  }) async {
+    final r = await _dio.get<Map<String, dynamic>>('/detail',
+        queryParameters: <String, dynamic>{
+          'type': type,
+          'tmdb_id': tmdbId,
+          'tvdb_id': tvdbId,
+        });
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> tmdbMovieDetails(int tmdbId,
+      {String language = 'en-US'}) async {
+    final r = await _tmdbDio.get<Map<String, dynamic>>(
+      '/3/movie/$tmdbId',
+      queryParameters: <String, dynamic>{
+        'append_to_response': 'credits',
+        'language': language,
+      },
+      options: Options(
+          headers: <String, String>{
+            'Authorization': 'Bearer $kTmdbReadAccessToken',
+          }),
+    );
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> tmdbTvDetails(int tmdbId,
+      {String language = 'en-US'}) async {
+    final r = await _tmdbDio.get<Map<String, dynamic>>(
+      '/3/tv/$tmdbId',
+      queryParameters: <String, dynamic>{
+        'append_to_response': 'credits',
+        'language': language,
+      },
+      options: Options(
+          headers: <String, String>{
+            'Authorization': 'Bearer $kTmdbReadAccessToken',
+          }),
     );
     return r.data ?? <String, dynamic>{};
   }

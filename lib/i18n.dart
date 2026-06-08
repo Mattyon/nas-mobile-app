@@ -123,6 +123,11 @@ const Map<String, Map<String, String>> _strings = {
     'aiFixResult': 'AI fixed it',
     'aiFixFailed': 'Could not auto-fix',
     'ok': 'OK',
+    'cast': 'Cast',
+    'seasons': 'Seasons',
+    'showMore': 'Show more',
+    'showLess': 'Show less',
+    'director': 'Director',
   },
   'cs': {
     'app': 'Mattyho NAS',
@@ -243,6 +248,11 @@ const Map<String, Map<String, String>> _strings = {
     'aiFixResult': 'AI to opravila',
     'aiFixFailed': 'Nelze automaticky opravit',
     'ok': 'OK',
+    'cast': 'Obsazení',
+    'seasons': 'Sezóny',
+    'showMore': 'Zobrazit více',
+    'showLess': 'Zobrazit méně',
+    'director': 'Režisér',
   },
 };
 
