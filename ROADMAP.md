@@ -44,6 +44,8 @@
 - [x] **AI chat: no notification when chat is open** — `active: true` field sent with message suppresses ntfy push and unread flag server-side
 - [x] **AI chat: auto-title** — Ollama generates a 3-6 word conversation title from the first message; AppBar updates immediately via `new_title` in the response
 - [x] **AI chat: unread indicator** — blue dot + bold title in chat list for conversations with unread AI responses; cleared when chat is opened
+- [x] **Cancel active download** — red stop button on the left of each Active tab tile; confirmation dialog; removes torrent + partial files from qBittorrent, cleans up Radarr/Sonarr queue records (season packs handled via bulk delete)
+- [x] **Notification read tracking** — badge shows unread count; opening the notification panel marks all as read and clears the badge; clear-all still available
 
 ## Pending / Backlog
 
@@ -56,7 +58,7 @@
 
 ### Features to consider
 - [ ] Per-episode re-grab from the detail / library screen
-- [ ] Notification read/unread tracking per user (currently global clear)
+- [ ] Per-user notification state (currently global — shared across all logged-in users)
 - [ ] ntfy subscription QR code / setup guide in the app
 - [ ] Subtitle language preference (Czech subtitles via Bazarr)
 - [ ] Download history / completed log

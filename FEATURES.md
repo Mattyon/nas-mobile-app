@@ -43,6 +43,7 @@ Complete list of everything the app and gateway can do.
 ### Downloads Screen
 - **Active** tab: downloading + queued torrents, sorted by qBittorrent priority
   - ▲/▼ buttons per tile for priority adjustment (optimistic update + 5s timer pause to prevent snap-back)
+  - Red stop button on the left of each tile — confirmation dialog → removes torrent + all partial files, cleans up Radarr/Sonarr queue
   - Human-readable state labels (e.g. "Stalled — no peers" instead of raw `stalledDL`)
   - Per-tile: name, progress bar, speed (MB/s), ETA, state
 - **Finished** tab: seeding/completed torrents
@@ -68,10 +69,10 @@ Complete list of everything the app and gateway can do.
 - Search within library
 
 ### Notifications Bell (AppBar)
-- Bell icon with red badge showing unread count
+- Bell icon with red badge showing unread count (badge clears when panel is opened)
 - Polls gateway every 60 seconds
-- Tap to open bottom sheet with notification list
-- "Clear all" button to dismiss
+- Tap to open bottom sheet → automatically marks all as read
+- "Clear all" button to dismiss all notifications
 - Receives: download complete, quality alerts, new episodes found, download failures
 
 ### Admin Features (admins group only)
