@@ -424,32 +424,71 @@ class _DownloadsScreenState extends State<DownloadsScreen> with LangAware {
     return '${sec}s';
   }
 
+  static const Set<String> _active = <String>{
+    'downloading', 'forcedDL', 'metaDL', 'stalledDL', 'checkingDL', 'allocating'
+  };
+  static const Set<String> _failed = <String>{'error', 'missingFiles'};
+
+  bool _isFailed(String s) => _failed.contains(s);
+
+  int _group(String s) {
+    if (_active.contains(s)) return 0;     // active downloads
+    if (s == 'queuedDL') return 1;         // queued
+    if (_isFailed(s)) return 3;            // failed (last, red)
+    return 2;                              // finished / seeding / paused / stopped
+  }
+
+  List<Map<String, dynamic>> _sorted() {
+    final List<Map<String, dynamic>> items =
+        _items.map((dynamic e) => e as Map<String, dynamic>).toList();
+    items.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
+      final int ga = _group(a['state']?.toString() ?? '');
+      final int gb = _group(b['state']?.toString() ?? '');
+      if (ga != gb) return ga.compareTo(gb);
+      if (ga == 0) {
+        // active: most-complete first
+        final double pa = (a['progress'] as num?)?.toDouble() ?? 0;
+        final double pb = (b['progress'] as num?)?.toDouble() ?? 0;
+        return pb.compareTo(pa);
+      }
+      return 0;
+    });
+    return items;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final List<Map<String, dynamic>> items = _sorted();
     return RefreshIndicator(
       onRefresh: _refresh,
-      child: _items.isEmpty
+      child: items.isEmpty
           ? ListView(children: <Widget>[
               const SizedBox(height: 120),
               Center(child: Text(tr('noResults'))),
             ])
           : ListView.builder(
-              itemCount: _items.length,
+              itemCount: items.length,
               itemBuilder: (BuildContext context, int i) {
-                final Map<String, dynamic> t = _items[i] as Map<String, dynamic>;
+                final Map<String, dynamic> t = items[i];
                 final double pct = (t['progress'] as num?)?.toDouble() ?? 0;
+                final bool failed = _isFailed(t['state']?.toString() ?? '');
                 return ListTile(
                   title: Text(t['name']?.toString() ?? '', maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
+                      overflow: TextOverflow.ellipsis,
+                      style: failed ? const TextStyle(color: Colors.redAccent) : null),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       const SizedBox(height: 4),
-                      LinearProgressIndicator(value: pct / 100),
+                      LinearProgressIndicator(
+                        value: pct / 100,
+                        color: failed ? Colors.redAccent : null,
+                      ),
                       const SizedBox(height: 4),
                       Text('${pct.toStringAsFixed(1)}%  •  '
                           '${t['dlspeed_mbps'] ?? 0} Mbit/s  •  ETA ${_eta(t['eta_sec'])}  •  '
-                          '${t['state'] ?? ''}'),
+                          '${t['state'] ?? ''}',
+                          style: failed ? const TextStyle(color: Colors.redAccent) : null),
                     ],
                   ),
                 );
