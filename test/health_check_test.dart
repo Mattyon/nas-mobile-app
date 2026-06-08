@@ -144,34 +144,51 @@ void main() {
   });
 
   group('health check — report data structure', () {
-    test('health report has items list', () {
+    test('health report has issues and warnings lists', () {
       final Map<String, dynamic> report = <String, dynamic>{
-        'items': <Map<String, dynamic>>[
-          <String, dynamic>{'category': 'stalled', 'title': 'Movie.mkv'},
+        'issues': <Map<String, dynamic>>[
+          <String, dynamic>{'category': 'stalled', 'message': 'Movie stalled'},
         ],
-        'ran_at': '2026-06-08T12:00:00Z',
-        'duration_sec': 45,
+        'warnings': <dynamic>[],
+        'checked_at': '2026-06-08T12:00:00Z',
+        'duration_s': 45,
+        'ok': false,
       };
-      final List<dynamic> items = (report['items'] as List<dynamic>?) ?? <dynamic>[];
-      expect(items.length, 1);
+      final List<dynamic> issues = (report['issues'] as List<dynamic>?) ?? <dynamic>[];
+      expect(issues.length, 1);
     });
 
-    test('empty items list means no issues', () {
+    test('empty issues and warnings means no problems', () {
       final Map<String, dynamic> report = <String, dynamic>{
-        'items': <dynamic>[],
+        'issues': <dynamic>[],
+        'warnings': <dynamic>[],
+        'checked_at': '2026-06-08T12:00:00Z',
+        'duration_s': 12.3,
+        'ok': true,
       };
-      final List<dynamic> items = (report['items'] as List<dynamic>?) ?? <dynamic>[];
-      expect(items, isEmpty);
+      final List<dynamic> issues = (report['issues'] as List<dynamic>?) ?? <dynamic>[];
+      final List<dynamic> warnings = (report['warnings'] as List<dynamic>?) ?? <dynamic>[];
+      expect(issues, isEmpty);
+      expect(warnings, isEmpty);
     });
 
-    test('issue item has category and title', () {
+    test('no-report response lacks checked_at', () {
+      final Map<String, dynamic> noReport = <String, dynamic>{
+        'ok': null,
+        'message': 'No health check has run yet.',
+      };
+      expect(noReport.containsKey('checked_at'), isFalse);
+    });
+
+    test('issue item has category and message', () {
       final Map<String, dynamic> item = <String, dynamic>{
         'category': 'missing_file',
-        'title': 'Missing Movie Title',
-        'severity': 'issue',
+        'message': 'Missing: Show — ep.mkv',
+        'item_type': 'tv',
+        'item_id': 42,
       };
       expect(item['category'], isNotNull);
-      expect(item['title'], isNotNull);
+      expect(item['message'], isNotNull);
     });
   });
 }
