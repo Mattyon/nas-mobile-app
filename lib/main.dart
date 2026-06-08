@@ -538,7 +538,10 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                   PopupMenuButton<String>(
                 icon: const Icon(Icons.menu),
                 onSelected: (String v) async {
-                  if (v == 'neweps') {
+                  if (v == 'ai') {
+                    Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => const AiChatScreen()));
+                  } else if (v == 'neweps') {
                     try {
                       await Api.I.triggerNewEpisodeCheck();
                       if (context.mounted) {
@@ -602,6 +605,15 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                         const Icon(Icons.people, size: 20),
                         const SizedBox(width: 12),
                         Text(tr('userManagement')),
+                      ]),
+                    ),
+                  if (Api.I.isAdmin)
+                    PopupMenuItem<String>(
+                      value: 'ai',
+                      child: Row(children: <Widget>[
+                        const Icon(Icons.smart_toy_outlined, size: 20),
+                        const SizedBox(width: 12),
+                        Text(tr('aiAssistant')),
                       ]),
                     ),
                   PopupMenuItem<String>(
@@ -1943,6 +1955,197 @@ class _UsersScreenState extends State<UsersScreen> with LangAware {
                     },
                   ),
                 ),
+    );
+  }
+}
+
+// ----------------------------- AI chat (admin) ------------------------------
+class AiChatScreen extends StatefulWidget {
+  const AiChatScreen({super.key});
+  @override
+  State<AiChatScreen> createState() => _AiChatScreenState();
+}
+
+class _AiChatScreenState extends State<AiChatScreen> with LangAware {
+  final List<Map<String, String>> _messages = <Map<String, String>>[];
+  final TextEditingController _input = TextEditingController();
+  final ScrollController _scroll = ScrollController();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _input.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.animateTo(_scroll.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+      }
+    });
+  }
+
+  Future<void> _send() async {
+    final String text = _input.text.trim();
+    if (text.isEmpty || _busy) return;
+    _input.clear();
+    setState(() {
+      _messages.add(<String, String>{'role': 'user', 'content': text});
+      _busy = true;
+    });
+    _scrollToBottom();
+    try {
+      final String reply = await Api.I.chat(_messages);
+      if (mounted) {
+        setState(() => _messages.add(<String, String>{'role': 'assistant', 'content': reply}));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _messages.add(
+            <String, String>{'role': 'assistant', 'content': 'Error: $e'}));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+      _scrollToBottom();
+    }
+  }
+
+  Widget _bubble(Map<String, String> m) {
+    final bool isUser = m['role'] == 'user';
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
+        decoration: BoxDecoration(
+          color: isUser ? cs.primary : cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(16),
+            topRight: const Radius.circular(16),
+            bottomLeft: Radius.circular(isUser ? 16 : 4),
+            bottomRight: Radius.circular(isUser ? 4 : 16),
+          ),
+        ),
+        child: SelectableText(
+          m['content'] ?? '',
+          style: TextStyle(color: isUser ? cs.onPrimary : cs.onSurface),
+        ),
+      ),
+    );
+  }
+
+  Widget _typingBubble() {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(16), topRight: Radius.circular(16),
+            bottomLeft: Radius.circular(4), bottomRight: Radius.circular(16),
+          ),
+        ),
+        child: const SizedBox(width: 48, height: 12, child: LinearProgressIndicator()),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(children: <Widget>[
+          const Icon(Icons.smart_toy_outlined, size: 20),
+          const SizedBox(width: 8),
+          Text(tr('aiAssistant')),
+        ]),
+        actions: <Widget>[
+          if (_messages.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete_sweep_outlined),
+              tooltip: tr('aiClear'),
+              onPressed: _busy ? null : () => setState(() => _messages.clear()),
+            ),
+        ],
+      ),
+      body: Column(
+        children: <Widget>[
+          Expanded(
+            child: _messages.isEmpty && !_busy
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Icon(Icons.smart_toy_outlined,
+                              size: 56, color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(height: 16),
+                          Text(tr('aiAssistant'),
+                              style: const TextStyle(
+                                  fontSize: 20, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 8),
+                          Opacity(
+                            opacity: 0.6,
+                            child: Text(
+                              tr('aiEmptyHint'),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    controller: _scroll,
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                    itemCount: _messages.length + (_busy ? 1 : 0),
+                    itemBuilder: (BuildContext context, int i) {
+                      if (i == _messages.length) return _typingBubble();
+                      return _bubble(_messages[i]);
+                    },
+                  ),
+          ),
+          const Divider(height: 1),
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+                12, 8, 12, 12 + MediaQuery.of(context).viewInsets.bottom),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: <Widget>[
+                Expanded(
+                  child: TextField(
+                    controller: _input,
+                    enabled: !_busy,
+                    maxLines: 4,
+                    minLines: 1,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _send(),
+                    decoration: InputDecoration(
+                      hintText: tr('aiHint'),
+                      isDense: true,
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  onPressed: _busy ? null : _send,
+                  icon: const Icon(Icons.send),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
