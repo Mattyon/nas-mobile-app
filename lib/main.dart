@@ -476,6 +476,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   TabController? _tabs;
   bool _didInitTab = false;
   final TextEditingController _q = TextEditingController();
+  Map<String, dynamic> _xfer = <String, dynamic>{};
 
   @override
   void initState() {
@@ -497,9 +498,14 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   Future<void> _refresh() async {
     try {
       final List<dynamic> d = await Api.I.downloads();
+      Map<String, dynamic> x = _xfer;
+      try {
+        x = await Api.I.transfer();
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _items = d;
+        _xfer = x;
         // First time data arrives: open Active unless nothing is in progress.
         if (!_didInitTab && d.isNotEmpty) {
           _didInitTab = true;
@@ -621,7 +627,31 @@ class _DownloadsScreenState extends State<DownloadsScreen>
             ],
           ),
         ),
+        _speedBar(),
       ],
+    );
+  }
+
+  Widget _speedBar() {
+    final num dl = (_xfer['dl_mbps'] as num?) ?? 0;
+    final num up = (_xfer['up_mbps'] as num?) ?? 0;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: <Widget>[
+          Row(children: <Widget>[
+            const Icon(Icons.south, size: 16, color: Colors.lightBlueAccent),
+            const SizedBox(width: 4),
+            Text('$dl Mbit/s'),
+          ]),
+          Row(children: <Widget>[
+            const Icon(Icons.north, size: 16, color: Colors.greenAccent),
+            const SizedBox(width: 4),
+            Text('$up Mbit/s'),
+          ]),
+        ],
+      ),
     );
   }
 }

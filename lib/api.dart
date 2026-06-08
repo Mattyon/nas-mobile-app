@@ -92,6 +92,11 @@ class Api {
         queryParameters: <String, dynamic>{'type': type, 'id': id});
   }
 
+  Future<Map<String, dynamic>> transfer() async {
+    final r = await _dio.get<Map<String, dynamic>>('/transfer');
+    return r.data ?? <String, dynamic>{};
+  }
+
   Future<List<dynamic>> plexSessions() async {
     final r = await _dio.get<Map<String, dynamic>>('/plex/sessions');
     return r.data!['sessions'] as List<dynamic>;
