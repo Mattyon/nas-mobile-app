@@ -128,6 +128,12 @@ const Map<String, Map<String, String>> _strings = {
     'showMore': 'Show more',
     'showLess': 'Show less',
     'director': 'Director',
+    'newChat': 'New chat',
+    'noChats': 'No conversations yet',
+    'renameChat': 'Rename',
+    'deleteChat': 'Delete chat',
+    'aiChats': 'AI Chats',
+    'chatHistory': 'Chat history',
   },
   'cs': {
     'app': 'Mattyho NAS',
@@ -253,6 +259,12 @@ const Map<String, Map<String, String>> _strings = {
     'showMore': 'Zobrazit více',
     'showLess': 'Zobrazit méně',
     'director': 'Režisér',
+    'newChat': 'Nový chat',
+    'noChats': 'Žádné konverzace',
+    'renameChat': 'Přejmenovat',
+    'deleteChat': 'Smazat chat',
+    'aiChats': 'AI Chaty',
+    'chatHistory': 'Historie chatů',
   },
 };
 

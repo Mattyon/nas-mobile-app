@@ -554,7 +554,7 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                         builder: (_) => const SpeedtestScreen()));
                   } else if (v == 'ai') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
-                        builder: (_) => const AiChatScreen()));
+                        builder: (_) => const AiChatsListScreen()));
                   } else if (v == 'sessions') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const SessionsScreen()));
@@ -613,13 +613,13 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                         Text(tr('userManagement')),
                       ]),
                     ),
-                  if (Api.I.isAdmin)
+                  if (Api.I.isSuperadmin)
                     PopupMenuItem<String>(
                       value: 'ai',
                       child: Row(children: <Widget>[
                         const Icon(Icons.smart_toy_outlined, size: 20),
                         const SizedBox(width: 12),
-                        Text(tr('aiAssistant')),
+                        Text(tr('aiChats')),
                       ]),
                     ),
                   if (Api.I.isAdmin)
@@ -1805,6 +1805,7 @@ class _UsersScreenState extends State<UsersScreen> with LangAware {
         TextEditingController(text: existing?['displayname']?.toString() ?? '');
     final TextEditingController passCtrl = TextEditingController();
     bool isAdmin = (existing?['groups'] as List<dynamic>?)?.contains('admins') ?? false;
+    bool isAiAccess = (existing?['is_ai_access'] as bool?) ?? false;
     bool saving = false;
     String? errorMsg;
 
@@ -1841,6 +1842,13 @@ class _UsersScreenState extends State<UsersScreen> with LangAware {
                   value: isAdmin,
                   onChanged: saving ? null : (bool? v) => ss(() => isAdmin = v ?? false),
                 ),
+                if (Api.I.isSuperadmin)
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('AI access'),
+                    value: isAiAccess,
+                    onChanged: saving ? null : (bool? v) => ss(() => isAiAccess = v ?? false),
+                  ),
                 if (errorMsg != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
@@ -1870,6 +1878,7 @@ class _UsersScreenState extends State<UsersScreen> with LangAware {
                             displayname: dispCtrl.text.trim(),
                             password: passCtrl.text.isEmpty ? null : passCtrl.text,
                             isAdmin: isAdmin,
+                            isAiAccess: isAiAccess,
                           );
                         } else {
                           await Api.I.createUser(
@@ -1877,6 +1886,7 @@ class _UsersScreenState extends State<UsersScreen> with LangAware {
                             password: passCtrl.text,
                             displayname: dispCtrl.text.trim(),
                             isAdmin: isAdmin,
+                            isAiAccess: isAiAccess,
                           );
                         }
                         if (ctx2.mounted) Navigator.of(ctx2).pop(true);
@@ -1983,24 +1993,202 @@ class _UsersScreenState extends State<UsersScreen> with LangAware {
   }
 }
 
-// ----------------------------- AI chat (admin) ------------------------------
+// ----------------------------- AI chats list (superadmin) -------------------
+class AiChatsListScreen extends StatefulWidget {
+  const AiChatsListScreen({super.key});
+  @override
+  State<AiChatsListScreen> createState() => _AiChatsListScreenState();
+}
+
+class _AiChatsListScreenState extends State<AiChatsListScreen> with LangAware {
+  List<dynamic> _chats = <dynamic>[];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final List<dynamic> chats = await Api.I.listChats();
+      if (mounted) setState(() { _chats = chats; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _newChat() async {
+    final Map<String, dynamic> chat = await Api.I.createChat();
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => AiChatScreen(chatId: chat['id'] as String,
+            initialTitle: chat['title'] as String)));
+    await _load();
+  }
+
+  Future<void> _rename(Map<String, dynamic> chat) async {
+    final TextEditingController ctrl =
+        TextEditingController(text: chat['title'] as String? ?? '');
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: Text(tr('renameChat')),
+        content: TextField(controller: ctrl, autofocus: true),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(tr('cancel'))),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text(tr('save'))),
+        ],
+      ),
+    );
+    if (ok == true && ctrl.text.trim().isNotEmpty) {
+      await Api.I.renameChat(chat['id'] as String, ctrl.text.trim());
+      await _load();
+    }
+  }
+
+  Future<void> _delete(Map<String, dynamic> chat) async {
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: Text(tr('deleteChat')),
+        content: Text(chat['title'] as String? ?? ''),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(tr('cancel'))),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text(tr('delete'))),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await Api.I.deleteChat(chat['id'] as String);
+      await _load();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(children: <Widget>[
+          const Icon(Icons.smart_toy_outlined, size: 20),
+          const SizedBox(width: 8),
+          Text(tr('aiChats')),
+        ]),
+        actions: <Widget>[
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _load,
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _newChat,
+        icon: const Icon(Icons.add),
+        label: Text(tr('newChat')),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _chats.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(Icons.chat_bubble_outline,
+                          size: 56, color: Theme.of(context).colorScheme.primary),
+                      const SizedBox(height: 16),
+                      Text(tr('noChats'),
+                          style: const TextStyle(fontSize: 16)),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: _chats.length,
+                  itemBuilder: (BuildContext context, int i) {
+                    final Map<String, dynamic> chat =
+                        _chats[i] as Map<String, dynamic>;
+                    return ListTile(
+                      leading: const Icon(Icons.chat_bubble_outline),
+                      title: Text(chat['title'] as String? ?? 'Chat'),
+                      subtitle: Text(
+                        (chat['updated_at'] as String? ?? '').replaceFirst('T', ' ').substring(0, 16),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      onTap: () async {
+                        await Navigator.of(context).push(MaterialPageRoute<void>(
+                            builder: (_) => AiChatScreen(
+                                chatId: chat['id'] as String,
+                                initialTitle: chat['title'] as String? ?? 'Chat')));
+                        await _load();
+                      },
+                      trailing: PopupMenuButton<String>(
+                        onSelected: (String v) async {
+                          if (v == 'rename') await _rename(chat);
+                          if (v == 'delete') await _delete(chat);
+                        },
+                        itemBuilder: (_) => <PopupMenuEntry<String>>[
+                          PopupMenuItem<String>(
+                              value: 'rename', child: Text(tr('renameChat'))),
+                          PopupMenuItem<String>(
+                              value: 'delete', child: Text(tr('deleteChat'))),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+}
+
+// ----------------------------- AI chat screen (one conversation) -------------
 class AiChatScreen extends StatefulWidget {
-  const AiChatScreen({super.key});
+  const AiChatScreen({super.key, required this.chatId, required this.initialTitle});
+  final String chatId;
+  final String initialTitle;
   @override
   State<AiChatScreen> createState() => _AiChatScreenState();
 }
 
 class _AiChatScreenState extends State<AiChatScreen> with LangAware {
-  final List<Map<String, String>> _messages = <Map<String, String>>[];
+  final List<Map<String, dynamic>> _messages = <Map<String, dynamic>>[];
   final TextEditingController _input = TextEditingController();
   final ScrollController _scroll = ScrollController();
   bool _busy = false;
+  bool _loading = true;
+  late String _title;
+
+  @override
+  void initState() {
+    super.initState();
+    _title = widget.initialTitle;
+    _loadHistory();
+  }
 
   @override
   void dispose() {
     _input.dispose();
     _scroll.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadHistory() async {
+    setState(() => _loading = true);
+    try {
+      final Map<String, dynamic> data = await Api.I.getChat(widget.chatId);
+      final List<dynamic> msgs = data['messages'] as List<dynamic>? ?? <dynamic>[];
+      if (mounted) {
+        setState(() {
+          _messages.clear();
+          _messages.addAll(msgs.cast<Map<String, dynamic>>());
+          _title = (data['chat'] as Map<String, dynamic>?)?['title'] as String? ?? _title;
+          _loading = false;
+        });
+        _scrollToBottom();
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   void _scrollToBottom() {
@@ -2017,19 +2205,18 @@ class _AiChatScreenState extends State<AiChatScreen> with LangAware {
     if (text.isEmpty || _busy) return;
     _input.clear();
     setState(() {
-      _messages.add(<String, String>{'role': 'user', 'content': text});
+      _messages.add(<String, dynamic>{'role': 'user', 'content': text});
       _busy = true;
     });
     _scrollToBottom();
     try {
-      final String reply = await Api.I.chat(_messages);
-      if (mounted) {
-        setState(() => _messages.add(<String, String>{'role': 'assistant', 'content': reply}));
-      }
+      final Map<String, dynamic> reply =
+          await Api.I.sendChatMessage(widget.chatId, text);
+      if (mounted) setState(() => _messages.add(reply));
     } catch (e) {
       if (mounted) {
         setState(() => _messages.add(
-            <String, String>{'role': 'assistant', 'content': 'Error: $e'}));
+            <String, dynamic>{'role': 'assistant', 'content': 'Error: $e'}));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -2037,7 +2224,7 @@ class _AiChatScreenState extends State<AiChatScreen> with LangAware {
     }
   }
 
-  Widget _bubble(Map<String, String> m) {
+  Widget _bubble(Map<String, dynamic> m) {
     final bool isUser = m['role'] == 'user';
     final ColorScheme cs = Theme.of(context).colorScheme;
     return Align(
@@ -2056,7 +2243,7 @@ class _AiChatScreenState extends State<AiChatScreen> with LangAware {
           ),
         ),
         child: SelectableText(
-          m['content'] ?? '',
+          m['content']?.toString() ?? '',
           style: TextStyle(color: isUser ? cs.onPrimary : cs.onSurface),
         ),
       ),
@@ -2086,90 +2273,79 @@ class _AiChatScreenState extends State<AiChatScreen> with LangAware {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Row(children: <Widget>[
-          const Icon(Icons.smart_toy_outlined, size: 20),
-          const SizedBox(width: 8),
-          Text(tr('aiAssistant')),
-        ]),
-        actions: <Widget>[
-          if (_messages.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.delete_sweep_outlined),
-              tooltip: tr('aiClear'),
-              onPressed: _busy ? null : () => setState(() => _messages.clear()),
-            ),
-        ],
+        title: Text(_title),
       ),
-      body: Column(
-        children: <Widget>[
-          Expanded(
-            child: _messages.isEmpty && !_busy
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          Icon(Icons.smart_toy_outlined,
-                              size: 56, color: Theme.of(context).colorScheme.primary),
-                          const SizedBox(height: 16),
-                          Text(tr('aiAssistant'),
-                              style: const TextStyle(
-                                  fontSize: 20, fontWeight: FontWeight.w600)),
-                          const SizedBox(height: 8),
-                          Opacity(
-                            opacity: 0.6,
-                            child: Text(
-                              tr('aiEmptyHint'),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                : ListView.builder(
-                    controller: _scroll,
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-                    itemCount: _messages.length + (_busy ? 1 : 0),
-                    itemBuilder: (BuildContext context, int i) {
-                      if (i == _messages.length) return _typingBubble();
-                      return _bubble(_messages[i]);
-                    },
-                  ),
-          ),
-          const Divider(height: 1),
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-                12, 8, 12, 12 + MediaQuery.of(context).viewInsets.bottom),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
               children: <Widget>[
                 Expanded(
-                  child: TextField(
-                    controller: _input,
-                    enabled: !_busy,
-                    maxLines: 4,
-                    minLines: 1,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _send(),
-                    decoration: InputDecoration(
-                      hintText: tr('aiHint'),
-                      isDense: true,
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
+                  child: _messages.isEmpty && !_busy
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                Icon(Icons.smart_toy_outlined,
+                                    size: 56,
+                                    color: Theme.of(context).colorScheme.primary),
+                                const SizedBox(height: 16),
+                                Text(tr('aiAssistant'),
+                                    style: const TextStyle(
+                                        fontSize: 20, fontWeight: FontWeight.w600)),
+                                const SizedBox(height: 8),
+                                Opacity(
+                                  opacity: 0.6,
+                                  child: Text(tr('aiEmptyHint'),
+                                      textAlign: TextAlign.center),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          controller: _scroll,
+                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                          itemCount: _messages.length + (_busy ? 1 : 0),
+                          itemBuilder: (BuildContext context, int i) {
+                            if (i == _messages.length) return _typingBubble();
+                            return _bubble(_messages[i]);
+                          },
+                        ),
                 ),
-                const SizedBox(width: 8),
-                IconButton.filled(
-                  onPressed: _busy ? null : _send,
-                  icon: const Icon(Icons.send),
+                const Divider(height: 1),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                      12, 8, 12, 12 + MediaQuery.of(context).viewInsets.bottom),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: <Widget>[
+                      Expanded(
+                        child: TextField(
+                          controller: _input,
+                          enabled: !_busy,
+                          maxLines: 4,
+                          minLines: 1,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => _send(),
+                          decoration: InputDecoration(
+                            hintText: tr('aiHint'),
+                            isDense: true,
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filled(
+                        onPressed: _busy ? null : _send,
+                        icon: const Icon(Icons.send),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }
