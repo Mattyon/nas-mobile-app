@@ -199,6 +199,81 @@ class _HomeShellState extends State<HomeShell> with LangAware {
     LibraryScreen(),
   ];
 
+  Future<void> _showSpeedDialog(BuildContext context) async {
+    Map<String, dynamic> current;
+    try {
+      current = await Api.I.qbtLimits();
+    } catch (_) {
+      current = <String, dynamic>{};
+    }
+    final TextEditingController dlCtrl = TextEditingController(
+        text: ((current['dl_mbps'] as num?) ?? 0).toStringAsFixed(1));
+    final TextEditingController upCtrl = TextEditingController(
+        text: ((current['up_mbps'] as num?) ?? 0).toStringAsFixed(1));
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: Text(tr('speedLimits')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            TextField(
+                controller: dlCtrl,
+                decoration: InputDecoration(labelText: tr('dlLimit')),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+            const SizedBox(height: 8),
+            TextField(
+                controller: upCtrl,
+                decoration: InputDecoration(labelText: tr('upLimit')),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: <Widget>[
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.pause_circle_outline),
+                  label: Text(tr('pauseAll')),
+                  onPressed: () async {
+                    try {
+                      await Api.I.qbtPause();
+                    } catch (_) {}
+                    if (ctx.mounted) Navigator.of(ctx).pop();
+                  },
+                ),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.play_circle_outline),
+                  label: Text(tr('resumeAll')),
+                  onPressed: () async {
+                    try {
+                      await Api.I.qbtResume();
+                    } catch (_) {}
+                    if (ctx.mounted) Navigator.of(ctx).pop();
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(), child: Text(tr('cancel'))),
+          FilledButton(
+            child: Text(tr('save')),
+            onPressed: () async {
+              final double dl = double.tryParse(dlCtrl.text) ?? 0;
+              final double up = double.tryParse(upCtrl.text) ?? 0;
+              try {
+                await Api.I.setQbtLimits(dl, up);
+              } catch (_) {}
+              if (ctx.mounted) Navigator.of(ctx).pop();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
@@ -214,6 +289,8 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                 if (v == 'sessions') {
                   Navigator.of(context).push(
                       MaterialPageRoute<void>(builder: (_) => const SessionsScreen()));
+                } else if (v == 'speed') {
+                  _showSpeedDialog(context);
                 } else if (v == 'logout') {
                   await Api.I.logout();
                   authTick.value++;
@@ -240,6 +317,15 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                       const Icon(Icons.cast_connected, size: 20),
                       const SizedBox(width: 12),
                       Text(tr('plexSessions')),
+                    ]),
+                  ),
+                if (Api.I.isAdmin)
+                  PopupMenuItem<String>(
+                    value: 'speed',
+                    child: Row(children: <Widget>[
+                      const Icon(Icons.speed, size: 20),
+                      const SizedBox(width: 12),
+                      Text(tr('speedLimits')),
                     ]),
                   ),
                 PopupMenuItem<String>(
@@ -970,3 +1056,4 @@ class _SessionsScreenState extends State<SessionsScreen> with LangAware {
     );
   }
 }
+

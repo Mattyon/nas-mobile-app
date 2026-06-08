@@ -49,6 +49,12 @@ const Map<String, Map<String, String>> _strings = {
     'storageUsedSuffix': 'of storage used',
     'transcode': 'transcode',
     'direct': 'direct',
+    'speedLimits': 'Speed limits',
+    'dlLimit': 'Download limit (Mbit/s, 0 = unlimited)',
+    'upLimit': 'Upload limit (Mbit/s, 0 = unlimited)',
+    'pauseAll': 'Pause all',
+    'resumeAll': 'Resume all',
+    'save': 'Save',
   },
   'cs': {
     'app': 'Mattyho NAS',
@@ -95,6 +101,12 @@ const Map<String, Map<String, String>> _strings = {
     'storageUsedSuffix': 'úložiště využito',
     'transcode': 'překódování',
     'direct': 'přímo',
+    'speedLimits': 'Omezení rychlosti',
+    'dlLimit': 'Limit stahování (Mbit/s, 0 = neomezeno)',
+    'upLimit': 'Limit nahrávání (Mbit/s, 0 = neomezeno)',
+    'pauseAll': 'Pozastavit vše',
+    'resumeAll': 'Obnovit vše',
+    'save': 'Uložit',
   },
 };
 

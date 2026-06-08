@@ -118,4 +118,17 @@ class Api {
     final r = await _dio.get<Map<String, dynamic>>('/plex/sessions');
     return r.data!['sessions'] as List<dynamic>;
   }
+
+  Future<Map<String, dynamic>> qbtLimits() async {
+    final r = await _dio.get<Map<String, dynamic>>('/qbt/limits');
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<void> setQbtLimits(double dlMbps, double upMbps) async {
+    await _dio.post<dynamic>('/qbt/limits',
+        data: <String, dynamic>{'dl_mbps': dlMbps, 'up_mbps': upMbps});
+  }
+
+  Future<void> qbtPause() async => _dio.post<dynamic>('/qbt/pause');
+  Future<void> qbtResume() async => _dio.post<dynamic>('/qbt/resume');
 }
