@@ -1757,6 +1757,8 @@ class _LocalTab extends StatelessWidget {
           tr('helpMobileStep1'), tr('helpMobileStep2local'), tr('helpMobileStep3'),
         ]),
         const SizedBox(height: 12),
+        _JellyfinDownloadCard(),
+        const SizedBox(height: 12),
         _HelpSection(icon: Icons.open_in_browser, title: tr('helpBrowserTitle'), steps: <String>[
           tr('helpBrowserStep1'), tr('helpBrowserStep2local'), tr('helpBrowserStep3'),
         ]),
@@ -1788,6 +1790,8 @@ class _RemoteTab extends StatelessWidget {
         _HelpSection(icon: Icons.phone_android, title: tr('helpMobileTitle'), steps: <String>[
           tr('helpMobileStep1'), tr('helpMobileStep2remote'), tr('helpMobileStep3'),
         ]),
+        const SizedBox(height: 12),
+        _JellyfinDownloadCard(),
         const SizedBox(height: 12),
         _HelpSection(icon: Icons.open_in_browser, title: tr('helpBrowserTitle'), steps: <String>[
           tr('helpBrowserStep1'), tr('helpBrowserStep2remote'), tr('helpBrowserStep3'),
@@ -1836,16 +1840,18 @@ class _AddressCard extends StatelessWidget {
 }
 
 class _LinkRow extends StatelessWidget {
-  const _LinkRow({required this.icon, required this.label, required this.url, required this.onTap});
+  const _LinkRow({required this.icon, required this.label, required this.url});
   final IconData icon;
   final String label;
   final String url;
-  final Future<void> Function(String) onTap;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => onTap(url),
+      onTap: () async {
+        final Uri uri = Uri.parse(url);
+        if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+      },
       borderRadius: BorderRadius.circular(6),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1857,6 +1863,40 @@ class _LinkRow extends StatelessWidget {
                   fontSize: 13, color: Colors.blueAccent,
                   decoration: TextDecoration.underline)),
         ]),
+      ),
+    );
+  }
+}
+
+class _JellyfinDownloadCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(children: <Widget>[
+              const Icon(Icons.download_outlined, size: 20),
+              const SizedBox(width: 8),
+              Text(tr('helpJellyfinDownload'),
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+            ]),
+            const SizedBox(height: 10),
+            _LinkRow(
+              icon: Icons.android,
+              label: tr('helpJellyfinAndroid'),
+              url: 'https://play.google.com/store/apps/details?id=org.jellyfin.mobile',
+            ),
+            const SizedBox(height: 8),
+            _LinkRow(
+              icon: Icons.phone_iphone,
+              label: tr('helpJellyfinIos'),
+              url: 'https://apps.apple.com/app/jellyfin-mobile/id1480192618',
+            ),
+          ],
+        ),
       ),
     );
   }
