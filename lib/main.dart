@@ -453,6 +453,30 @@ class _HomeShellState extends State<HomeShell> with LangAware {
   }
 }
 
+Widget _errorView(String message, VoidCallback onRetry) {
+  return Center(
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const Icon(Icons.cloud_off, size: 48, color: Colors.redAccent),
+          const SizedBox(height: 16),
+          Text(message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 // ----------------------------- search ---------------------------------------
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -724,6 +748,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   bool _didInitTab = false;
   final TextEditingController _q = TextEditingController();
   Map<String, dynamic> _xfer = <String, dynamic>{};
+  String? _error;
 
   @override
   void initState() {
@@ -753,6 +778,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
       setState(() {
         _items = d;
         _xfer = x;
+        _error = null;
         // First time data arrives: open Active unless nothing is in progress.
         if (!_didInitTab && d.isNotEmpty) {
           _didInitTab = true;
@@ -761,7 +787,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           _tabs!.index = hasActive ? 0 : 1;
         }
       });
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    }
   }
 
   String _eta(Object? s) {
@@ -846,6 +874,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_error != null) {
+      return _errorView(_error!, _refresh);
+    }
     final List<Map<String, dynamic>> active = _filtered(true);
     final List<Map<String, dynamic>> finished = _filtered(false);
     return Column(
@@ -915,6 +946,7 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
   final TextEditingController _q = TextEditingController();
   List<dynamic> _items = <dynamic>[];
   Map<String, dynamic> _disk = <String, dynamic>{};
+  String? _error;
 
   @override
   void initState() {
@@ -933,9 +965,12 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
         setState(() {
           _items = r;
           _disk = disk;
+          _error = null;
         });
       }
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    }
   }
 
   String _freeStr(double gb) {
@@ -999,6 +1034,9 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
 
   @override
   Widget build(BuildContext context) {
+    if (_error != null) {
+      return _errorView(_error!, _refresh);
+    }
     return Column(
       children: <Widget>[
         Padding(
