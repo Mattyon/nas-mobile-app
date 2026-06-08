@@ -283,25 +283,6 @@ class Api {
         data: <String, dynamic>{'hash': hash, 'old_idx': oldIdx, 'new_idx': newIdx});
   }
 
-  Future<Map<String, dynamic>> swapTorrent({
-    required String type,
-    required int itemId,
-    required int queueItemId,
-    required String guid,
-    required int indexerId,
-  }) async {
-    final r = await _dio.post<Map<String, dynamic>>('/grab/swap',
-        data: <String, dynamic>{
-          'type': type,
-          'item_id': itemId,
-          'queue_item_id': queueItemId,
-          'guid': guid,
-          'indexer_id': indexerId,
-        });
-    return r.data ?? <String, dynamic>{};
-  }
-
-
   Future<List<dynamic>> listUsers() async {
     final r = await _dio.get<Map<String, dynamic>>('/users');
     return r.data!['users'] as List<dynamic>;
@@ -451,15 +432,6 @@ class Api {
     return r.data ?? <String, dynamic>{};
   }
 
-  Future<Map<String, dynamic>> healthResolve(Map<String, dynamic> item) async {
-    final r = await _dio.post<Map<String, dynamic>>(
-      '/health/resolve',
-      data: <String, dynamic>{'item': item},
-      options: Options(receiveTimeout: const Duration(minutes: 2)),
-    );
-    return r.data ?? <String, dynamic>{};
-  }
-
   Future<Map<String, dynamic>> itemDetail({
     required String type,
     int tmdbId = 0,
@@ -471,6 +443,15 @@ class Api {
           'tmdb_id': tmdbId,
           'tvdb_id': tvdbId,
         });
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> healthResolve(Map<String, dynamic> item) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/health/resolve',
+      data: <String, dynamic>{'item': item},
+      options: Options(receiveTimeout: const Duration(minutes: 2)),
+    );
     return r.data ?? <String, dynamic>{};
   }
 
