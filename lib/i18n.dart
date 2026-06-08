@@ -38,6 +38,7 @@ const Map<String, Map<String, String>> _strings = {
     'stageDatabases': 'Checking torrent databases…',
     'stagePick': 'Picking the best release…',
     'stageStart': 'Starting the download…',
+    'inLibrary': 'In library',
   },
   'cs': {
     'app': 'Mattyho NAS',
@@ -73,6 +74,7 @@ const Map<String, Map<String, String>> _strings = {
     'stageDatabases': 'Prohledávám databáze…',
     'stagePick': 'Vybírám nejlepší verzi…',
     'stageStart': 'Spouštím stahování…',
+    'inLibrary': 'V knihovně',
   },
 };
 

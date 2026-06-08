@@ -404,18 +404,31 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
                   itemBuilder: (BuildContext context, int i) {
                     final Map<String, dynamic> m = _results[i] as Map<String, dynamic>;
                     final bool busy = _grabbing == _key(m);
+                    final bool onDisk = m['hasFile'] == true;
                     return ListTile(
                       leading: PosterImage(m['poster'] as String?),
                       title: Text(m['title']?.toString() ?? ''),
                       subtitle: Text(m['year']?.toString() ?? ''),
-                      trailing: FilledButton.tonal(
-                        onPressed: busy ? null : () => _grab(m),
-                        child: busy
-                            ? const SizedBox(
-                                height: 18, width: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2))
-                            : Text(tr('download')),
-                      ),
+                      // On disk → green check, no button.
+                      // Added but no file → show download button (allows retry).
+                      // Not added → download button.
+                      trailing: onDisk
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                const Icon(Icons.check_circle, size: 18, color: Colors.green),
+                                const SizedBox(width: 4),
+                                Text(tr('onDisk'), style: const TextStyle(fontSize: 12)),
+                              ],
+                            )
+                          : FilledButton.tonal(
+                              onPressed: busy ? null : () => _grab(m),
+                              child: busy
+                                  ? const SizedBox(
+                                      height: 18, width: 18,
+                                      child: CircularProgressIndicator(strokeWidth: 2))
+                                  : Text(tr('download')),
+                            ),
                     );
                   },
                 ),
