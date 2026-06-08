@@ -49,13 +49,43 @@ mixin LangAware<T extends StatefulWidget> on State<T> {
   }
 }
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
   @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  bool _checking = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Api.I.onUnauthorized = () {
+      if (mounted) authTick.value++;
+    };
+    _tryAutoLogin();
+  }
+
+  Future<void> _tryAutoLogin() async {
+    if (!Api.I.isLoggedIn) {
+      final hasIt = await Api.I.hasRememberedCredentials();
+      if (hasIt) {
+        final ok = await Api.I.biometricAutoLogin();
+        if (ok && mounted) authTick.value++;
+      }
+    }
+    if (mounted) setState(() => _checking = false);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_checking) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return ValueListenableBuilder<int>(
       valueListenable: authTick,
-      builder: (BuildContext context, int _, Widget? _) {
+      builder: (BuildContext context, int _, Widget? __) {
         return Api.I.isLoggedIn ? const HomeShell() : const LoginScreen();
       },
     );
@@ -120,20 +150,57 @@ class _LoginScreenState extends State<LoginScreen> with LangAware {
   final TextEditingController _pass = TextEditingController();
   bool _busy = false;
   String? _error;
+  bool _rememberMe = false;
+  bool _canBio = false;
+  bool _hasRemembered = false;
+  String? _rememberedUser;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkCapabilities();
+  }
+
+  Future<void> _checkCapabilities() async {
+    final canBio = await Api.I.canUseBiometrics();
+    final hasRem = await Api.I.hasRememberedCredentials();
+    final remUser = await Api.I.rememberedUsername();
+    if (mounted) {
+      setState(() {
+        _canBio = canBio;
+        _hasRemembered = hasRem;
+        _rememberedUser = remUser;
+        if (_hasRemembered) _rememberMe = true;
+      });
+    }
+  }
 
   Future<void> _submit() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
+    setState(() { _busy = true; _error = null; });
     try {
       await Api.I.setBaseUrl(_url.text);
       await Api.I.login(_user.text.trim(), _pass.text);
+      if (_rememberMe) {
+        await Api.I.saveRememberedCredentials(_user.text.trim(), _pass.text);
+      } else {
+        await Api.I.clearRememberedCredentials();
+      }
       authTick.value++;
     } catch (_) {
       setState(() => _error = tr('loginFailed'));
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _biometricLogin() async {
+    setState(() { _busy = true; _error = null; });
+    final ok = await Api.I.biometricAutoLogin();
+    if (!mounted) return;
+    if (ok) {
+      authTick.value++;
+    } else {
+      setState(() { _busy = false; _error = tr('loginFailed'); });
     }
   }
 
@@ -148,6 +215,18 @@ class _LoginScreenState extends State<LoginScreen> with LangAware {
             shrinkWrap: true,
             padding: const EdgeInsets.all(24),
             children: <Widget>[
+              if (_canBio && _hasRemembered) ...<Widget>[
+                FilledButton.icon(
+                  onPressed: _busy ? null : _biometricLogin,
+                  icon: const Icon(Icons.fingerprint),
+                  label: Text(_rememberedUser != null
+                      ? '${tr('loginWithBiometrics')} ($_rememberedUser)'
+                      : tr('loginWithBiometrics')),
+                ),
+                const SizedBox(height: 24),
+                const Divider(),
+                const SizedBox(height: 16),
+              ],
               TextField(
                 controller: _url,
                 decoration: InputDecoration(labelText: tr('serverUrl')),
@@ -164,7 +243,14 @@ class _LoginScreenState extends State<LoginScreen> with LangAware {
                 decoration: InputDecoration(labelText: tr('password')),
                 onSubmitted: (_) => _submit(),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(tr('rememberMe')),
+                value: _rememberMe,
+                onChanged: _busy ? null : (bool? v) => setState(() => _rememberMe = v ?? false),
+              ),
+              const SizedBox(height: 12),
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
@@ -287,11 +373,11 @@ class _HomeShellState extends State<HomeShell> with LangAware {
               icon: const Icon(Icons.more_vert),
               onSelected: (String v) async {
                 if (v == 'sessions') {
-                  Navigator.of(context).push(
-                      MaterialPageRoute<void>(builder: (_) => const SessionsScreen()));
+                  Navigator.of(context).push(MaterialPageRoute<void>(
+                      builder: (_) => const SessionsScreen()));
                 } else if (v == 'users') {
-                  Navigator.of(context).push(
-                      MaterialPageRoute<void>(builder: (_) => const UsersScreen()));
+                  Navigator.of(context).push(MaterialPageRoute<void>(
+                      builder: (_) => const UsersScreen()));
                 } else if (v == 'speed') {
                   _showSpeedDialog(context);
                 } else if (v == 'logout') {

@@ -96,7 +96,6 @@ class Api {
     final dynamic dn = data['displayname'];
     displayName = dn is String && dn.isNotEmpty ? dn : username;
     groups = List<String>.from(data['groups'] as List<dynamic>? ?? <dynamic>[]);
-    isSuperadmin = (data['is_superadmin'] as bool?) ?? false;
     _build();
   }
 
@@ -106,7 +105,6 @@ class Api {
     await prefs.setStringList('groups', groups);
     await prefs.setString('username', username ?? '');
     await prefs.setString('displayName', displayName ?? username ?? '');
-    await prefs.setBool('isSuperadmin', isSuperadmin);
   }
 
   /// Returns true if credentials are stored and not expired.
