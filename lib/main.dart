@@ -159,6 +159,7 @@ class NotificationBell extends StatefulWidget {
 
 class _NotificationBellState extends State<NotificationBell> with LangAware {
   List<dynamic> _items = <dynamic>[];
+  int _unreadCount = 0;
   Timer? _timer;
 
   @override
@@ -176,8 +177,10 @@ class _NotificationBellState extends State<NotificationBell> with LangAware {
 
   Future<void> _poll() async {
     try {
-      final List<dynamic> n = await Api.I.notifications();
-      if (mounted) setState(() => _items = n);
+      final Map<String, dynamic> data = await Api.I.notifications();
+      final List<dynamic> items = (data['notifications'] as List<dynamic>?) ?? <dynamic>[];
+      final int unread = (data['unread_count'] as int?) ?? 0;
+      if (mounted) setState(() { _items = items; _unreadCount = unread; });
     } catch (_) {}
   }
 
@@ -189,6 +192,9 @@ class _NotificationBellState extends State<NotificationBell> with LangAware {
   }
 
   void _show() {
+    // Clear unread badge immediately; fire-and-forget to server.
+    setState(() => _unreadCount = 0);
+    Api.I.markNotificationsRead().catchError((_) {});
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -255,7 +261,7 @@ class _NotificationBellState extends State<NotificationBell> with LangAware {
           onPressed: _show,
           tooltip: tr('notifications'),
         ),
-        if (_items.isNotEmpty)
+        if (_unreadCount > 0)
           Positioned(
             right: 8, top: 8,
             child: Container(
@@ -266,7 +272,7 @@ class _NotificationBellState extends State<NotificationBell> with LangAware {
               ),
               constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
               child: Text(
-                _items.length > 9 ? '9+' : '${_items.length}',
+                _unreadCount > 9 ? '9+' : '$_unreadCount',
                 style: const TextStyle(color: Colors.white, fontSize: 9,
                     fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
