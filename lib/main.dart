@@ -3279,7 +3279,7 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
           ],
         ),
       );
-      if (ok && mounted) await _load();
+      if (ok && mounted) _run(); // re-run health check so the fixed warning disappears
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context)
