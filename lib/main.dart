@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
 import 'i18n.dart';
@@ -9,9 +10,48 @@ final ValueNotifier<int> authTick = ValueNotifier<int>(0);
 final ValueNotifier<int> selectedTab = ValueNotifier<int>(0); // 0=Search 1=Downloads 2=Library
 final ValueNotifier<ThemeMode> themeMode = ValueNotifier<ThemeMode>(ThemeMode.dark);
 
+// ----------------------------- local notifications --------------------------
+final FlutterLocalNotificationsPlugin _flnp = FlutterLocalNotificationsPlugin();
+
+const AndroidNotificationChannel _dlChannel = AndroidNotificationChannel(
+  'downloads',
+  'Downloads',
+  description: 'Download completion alerts',
+  importance: Importance.high,
+);
+
+Future<void> _initNotifications() async {
+  const AndroidInitializationSettings android =
+      AndroidInitializationSettings('@mipmap/ic_launcher');
+  await _flnp.initialize(settings: const InitializationSettings(android: android));
+  final AndroidFlutterLocalNotificationsPlugin? ap = _flnp
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+  await ap?.createNotificationChannel(_dlChannel);
+  await ap?.requestNotificationsPermission();
+}
+
+Future<void> _notifyDownloadDone(String name) async {
+  await _flnp.show(
+    id: name.hashCode.abs() % 100000,
+    title: 'Download complete',
+    body: name,
+    notificationDetails: NotificationDetails(
+      android: AndroidNotificationDetails(
+        _dlChannel.id,
+        _dlChannel.name,
+        channelDescription: _dlChannel.description,
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+      ),
+    ),
+  );
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Api.I.init();
+  if (Platform.isAndroid) await _initNotifications();
   final prefs = await SharedPreferences.getInstance();
   final bool isDark = prefs.getBool('darkMode') ?? true;
   themeMode.value = isDark ? ThemeMode.dark : ThemeMode.light;
@@ -109,7 +149,128 @@ class LangButton extends StatelessWidget {
   }
 }
 
-/// Official cover art loaded from the TMDb/TVDB URL the gateway provides.
+// ----------------------------- notification bell ----------------------------
+class NotificationBell extends StatefulWidget {
+  const NotificationBell({super.key});
+  @override
+  State<NotificationBell> createState() => _NotificationBellState();
+}
+
+class _NotificationBellState extends State<NotificationBell> with LangAware {
+  List<dynamic> _items = <dynamic>[];
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _poll();
+    _timer = Timer.periodic(const Duration(seconds: 60), (_) => _poll());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _poll() async {
+    try {
+      final List<dynamic> n = await Api.I.notifications();
+      if (mounted) setState(() => _items = n);
+    } catch (_) {}
+  }
+
+  Future<void> _clear() async {
+    try {
+      await Api.I.clearNotifications();
+      if (mounted) setState(() => _items = <dynamic>[]);
+    } catch (_) {}
+  }
+
+  void _show() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.5,
+        maxChildSize: 0.85,
+        builder: (BuildContext ctx2, ScrollController sc) => Column(
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
+              child: Row(
+                children: <Widget>[
+                  Expanded(child: Text(tr('notifications'),
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+                  if (_items.isNotEmpty)
+                    TextButton(onPressed: () { _clear(); Navigator.pop(ctx2); },
+                        child: Text(tr('clearAll'))),
+                ],
+              ),
+            ),
+            const Divider(),
+            Expanded(
+              child: _items.isEmpty
+                  ? Center(child: Text(tr('noNotifications'),
+                      style: const TextStyle(color: Colors.grey)))
+                  : ListView.separated(
+                      controller: sc,
+                      itemCount: _items.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (BuildContext c, int i) {
+                        final Map<String, dynamic> n =
+                            _items[i] as Map<String, dynamic>;
+                        return ListTile(
+                          title: Text(n['title']?.toString() ?? '',
+                              style: const TextStyle(fontWeight: FontWeight.w500)),
+                          subtitle: Text(n['body']?.toString() ?? '',
+                              maxLines: 3, overflow: TextOverflow.ellipsis),
+                          dense: true,
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    ).then((_) => _poll());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: <Widget>[
+        IconButton(
+          icon: const Icon(Icons.notifications_outlined),
+          onPressed: _show,
+          tooltip: tr('notifications'),
+        ),
+        if (_items.isNotEmpty)
+          Positioned(
+            right: 8, top: 8,
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: const BoxDecoration(
+                color: Colors.redAccent,
+                shape: BoxShape.circle,
+              ),
+              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+              child: Text(
+                _items.length > 9 ? '9+' : '${_items.length}',
+                style: const TextStyle(color: Colors.white, fontSize: 9,
+                    fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Official cover art (loaded from the TMDb/TVDB URL the gateway provides).
 class PosterImage extends StatelessWidget {
   final String? url;
   const PosterImage(this.url, {super.key});
@@ -368,6 +529,7 @@ class _HomeShellState extends State<HomeShell> with LangAware {
         appBar: AppBar(
           title: Text(tr('app')),
           actions: <Widget>[
+            const NotificationBell(),
             const LangButton(),
             ValueListenableBuilder<ThemeMode>(
               valueListenable: themeMode,
@@ -375,7 +537,15 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                   PopupMenuButton<String>(
                 icon: const Icon(Icons.menu),
                 onSelected: (String v) async {
-                  if (v == 'sessions') {
+                  if (v == 'neweps') {
+                    try {
+                      await Api.I.triggerNewEpisodeCheck();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(tr('newEpsStarted'))));
+                      }
+                    } catch (_) {}
+                  } else if (v == 'sessions') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const SessionsScreen()));
                   } else if (v == 'users') {
@@ -433,6 +603,14 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                         Text(tr('userManagement')),
                       ]),
                     ),
+                  PopupMenuItem<String>(
+                    value: 'neweps',
+                    child: Row(children: <Widget>[
+                      const Icon(Icons.tv, size: 20),
+                      const SizedBox(width: 12),
+                      Text(tr('checkNewEps')),
+                    ]),
+                  ),
                   PopupMenuItem<String>(
                     value: 'theme',
                     child: Row(children: <Widget>[
