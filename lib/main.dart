@@ -1526,7 +1526,8 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
                   controller: _q,
                   onSubmitted: (_) => _refresh(),
                   decoration: InputDecoration(
-                      hintText: tr('search'), prefixIcon: const Icon(Icons.search)),
+                      hintText: tr('search'), prefixIcon: const Icon(Icons.search),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14)),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1558,6 +1559,10 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
                   if (sizeGb > 0) '${sizeGb.toStringAsFixed(1)} GB',
                 ].where((String s) => s.isNotEmpty).join('  •  ');
                 return ListTile(
+                  onTap: () => Navigator.push<void>(context,
+                      MaterialPageRoute<void>(
+                          builder: (_) => DetailScreen(
+                              item: <String, dynamic>{...m, 'type': _type}))),
                   leading: PosterImage(m['poster'] as String?),
                   title: Text(m['title']?.toString() ?? ''),
                   subtitle: Row(
