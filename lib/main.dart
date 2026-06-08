@@ -14,23 +14,36 @@ class NasApp extends StatelessWidget {
   const NasApp({super.key});
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<String>(
-      valueListenable: lang,
-      builder: (BuildContext context, String _, Widget? _) {
-        return MaterialApp(
-          title: 'NAS',
-          debugShowCheckedModeBanner: false,
-          theme: ThemeData(
-            colorSchemeSeed: Colors.indigo,
-            brightness: Brightness.dark,
-            useMaterial3: true,
-          ),
-          // Key changes with the language so the whole subtree rebuilds and tr()
-          // re-evaluates (a const subtree would otherwise not rebuild).
-          home: AuthGate(key: ValueKey<String>('lang-${lang.value}')),
-        );
-      },
+    return MaterialApp(
+      title: 'NAS',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorSchemeSeed: Colors.indigo,
+        brightness: Brightness.dark,
+        useMaterial3: true,
+      ),
+      home: const AuthGate(),
     );
+  }
+}
+
+/// Rebuilds a screen's State when the language changes — WITHOUT remounting, so
+/// screen state (search results, current tab, text fields) is preserved.
+mixin LangAware<T extends StatefulWidget> on State<T> {
+  void _onLangChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    lang.addListener(_onLangChanged);
+  }
+
+  @override
+  void dispose() {
+    lang.removeListener(_onLangChanged);
+    super.dispose();
   }
 }
 
@@ -51,9 +64,41 @@ class LangButton extends StatelessWidget {
   const LangButton({super.key});
   @override
   Widget build(BuildContext context) {
-    return TextButton(
-      onPressed: toggleLang,
-      child: Text(tr('language'), style: const TextStyle(color: Colors.white)),
+    // Self-updating even though instances are const: rebuilds on language change
+    // so the label always offers the *other* language.
+    return ValueListenableBuilder<String>(
+      valueListenable: lang,
+      builder: (BuildContext context, String _, Widget? _) => TextButton(
+        onPressed: toggleLang,
+        child: Text(tr('language'), style: const TextStyle(color: Colors.white)),
+      ),
+    );
+  }
+}
+
+/// Official cover art loaded from the TMDb/TVDB URL the gateway provides.
+class PosterImage extends StatelessWidget {
+  final String? url;
+  const PosterImage(this.url, {super.key});
+  static const double _w = 46, _h = 69;
+
+  Widget _fallback(IconData icon) =>
+      Container(width: _w, height: _h, color: Colors.black26, child: Icon(icon, size: 20));
+
+  @override
+  Widget build(BuildContext context) {
+    if (url == null || url!.isEmpty) return _fallback(Icons.movie_outlined);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: Image.network(
+        url!,
+        width: _w,
+        height: _h,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _fallback(Icons.broken_image_outlined),
+        loadingBuilder: (BuildContext c, Widget child, ImageChunkEvent? p) =>
+            p == null ? child : _fallback(Icons.image_outlined),
+      ),
     );
   }
 }
@@ -65,7 +110,7 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> with LangAware {
   final TextEditingController _url =
       TextEditingController(text: Api.I.baseUrl);
   final TextEditingController _user = TextEditingController();
@@ -144,7 +189,7 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell> with LangAware {
   int _tab = 0;
   static const List<Widget> _pages = <Widget>[
     SearchScreen(),
@@ -190,7 +235,7 @@ class SearchScreen extends StatefulWidget {
   State<SearchScreen> createState() => _SearchScreenState();
 }
 
-class _SearchScreenState extends State<SearchScreen> {
+class _SearchScreenState extends State<SearchScreen> with LangAware {
   final TextEditingController _q = TextEditingController();
   String _type = 'movie';
   List<dynamic> _results = <dynamic>[];
@@ -241,7 +286,7 @@ class _SearchScreenState extends State<SearchScreen> {
       );
       _snack(tr('added'));
     } catch (_) {
-      _snack('Error');
+      _snack(tr('error'));
     }
   }
 
@@ -291,6 +336,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   itemBuilder: (BuildContext context, int i) {
                     final Map<String, dynamic> m = _results[i] as Map<String, dynamic>;
                     return ListTile(
+                      leading: PosterImage(m['poster'] as String?),
                       title: Text(m['title']?.toString() ?? ''),
                       subtitle: Text(m['year']?.toString() ?? ''),
                       trailing: FilledButton.tonal(
@@ -313,7 +359,7 @@ class DownloadsScreen extends StatefulWidget {
   State<DownloadsScreen> createState() => _DownloadsScreenState();
 }
 
-class _DownloadsScreenState extends State<DownloadsScreen> {
+class _DownloadsScreenState extends State<DownloadsScreen> with LangAware {
   List<dynamic> _items = <dynamic>[];
 
   @override
@@ -370,7 +416,7 @@ class LibraryScreen extends StatefulWidget {
   State<LibraryScreen> createState() => _LibraryScreenState();
 }
 
-class _LibraryScreenState extends State<LibraryScreen> {
+class _LibraryScreenState extends State<LibraryScreen> with LangAware {
   String _type = 'movie';
   final TextEditingController _q = TextEditingController();
   List<dynamic> _items = <dynamic>[];
@@ -447,10 +493,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 final Map<String, dynamic> m = _items[i] as Map<String, dynamic>;
                 final bool hasFile = m['hasFile'] == true;
                 return ListTile(
-                  leading: Icon(hasFile ? Icons.check_circle : Icons.hourglass_empty,
-                      color: hasFile ? Colors.green : Colors.grey),
+                  leading: PosterImage(m['poster'] as String?),
                   title: Text(m['title']?.toString() ?? ''),
-                  subtitle: Text(m['year']?.toString() ?? ''),
+                  subtitle: Row(
+                    children: <Widget>[
+                      Icon(hasFile ? Icons.check_circle : Icons.hourglass_empty,
+                          size: 14, color: hasFile ? Colors.green : Colors.grey),
+                      const SizedBox(width: 4),
+                      Text(m['year']?.toString() ?? ''),
+                    ],
+                  ),
                   trailing: Api.I.isAdmin
                       ? IconButton(
                           icon: const Icon(Icons.delete_outline),
