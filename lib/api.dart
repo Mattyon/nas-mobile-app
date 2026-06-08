@@ -349,6 +349,18 @@ class Api {
     return '';
   }
 
+  Future<List<dynamic>> notifications() async {
+    final r = await _dio.get<Map<String, dynamic>>('/notifications');
+    return (r.data?['notifications'] as List<dynamic>?) ?? <dynamic>[];
+  }
+
+  Future<void> clearNotifications() async {
+    await _dio.post<dynamic>('/notifications/clear');
+  }
+
+  Future<void> triggerNewEpisodeCheck() async {
+    await _dio.post<dynamic>('/cron/new-episodes');
+  }
 
   Future<Map<String, dynamic>> healthReport() async {
     final r = await _dio.get<Map<String, dynamic>>('/health/report');
