@@ -70,9 +70,10 @@ class LangButton extends StatelessWidget {
     // so the label always offers the *other* language.
     return ValueListenableBuilder<String>(
       valueListenable: lang,
-      builder: (BuildContext context, String _, Widget? _) => TextButton(
+      builder: (BuildContext context, String code, Widget? _) => IconButton(
         onPressed: toggleLang,
-        child: Text(tr('language'), style: const TextStyle(color: Colors.white)),
+        tooltip: tr('language'),
+        icon: Text(code == 'cs' ? '🇨🇿' : '🇬🇧', style: const TextStyle(fontSize: 22)),
       ),
     );
   }
@@ -207,13 +208,36 @@ class _HomeShellState extends State<HomeShell> with LangAware {
           title: Text(tr('app')),
           actions: <Widget>[
             const LangButton(),
-            IconButton(
-              icon: const Icon(Icons.logout),
-              tooltip: tr('logout'),
-              onPressed: () async {
-                await Api.I.logout();
-                authTick.value++;
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              onSelected: (String v) async {
+                if (v == 'sessions') {
+                  Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => const SessionsScreen()));
+                } else if (v == 'logout') {
+                  await Api.I.logout();
+                  authTick.value++;
+                }
               },
+              itemBuilder: (BuildContext ctx) => <PopupMenuEntry<String>>[
+                if (Api.I.isAdmin)
+                  PopupMenuItem<String>(
+                    value: 'sessions',
+                    child: Row(children: <Widget>[
+                      const Icon(Icons.cast_connected, size: 20),
+                      const SizedBox(width: 12),
+                      Text(tr('plexSessions')),
+                    ]),
+                  ),
+                PopupMenuItem<String>(
+                  value: 'logout',
+                  child: Row(children: <Widget>[
+                    const Icon(Icons.logout, size: 20),
+                    const SizedBox(width: 12),
+                    Text(tr('logout')),
+                  ]),
+                ),
+              ],
             ),
           ],
         ),
@@ -708,6 +732,92 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ----------------------------- Plex sessions (admin) ------------------------
+class SessionsScreen extends StatefulWidget {
+  const SessionsScreen({super.key});
+  @override
+  State<SessionsScreen> createState() => _SessionsScreenState();
+}
+
+class _SessionsScreenState extends State<SessionsScreen> with LangAware {
+  List<dynamic> _sessions = <dynamic>[];
+  Timer? _timer;
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _refresh());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final List<dynamic> s = await Api.I.plexSessions();
+      if (mounted) {
+        setState(() {
+          _sessions = s;
+          _loaded = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loaded = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(tr('plexSessions'))),
+      body: !_loaded
+          ? const Center(child: CircularProgressIndicator())
+          : _sessions.isEmpty
+              ? Center(child: Text(tr('noSessions')))
+              : RefreshIndicator(
+                  onRefresh: _refresh,
+                  child: ListView.builder(
+                    itemCount: _sessions.length,
+                    itemBuilder: (BuildContext context, int i) {
+                      final Map<String, dynamic> s = _sessions[i] as Map<String, dynamic>;
+                      final double pct = (s['progress_pct'] as num?)?.toDouble() ?? 0;
+                      final bool playing = s['state'] == 'playing';
+                      final num? bw = s['bandwidth_kbps'] as num?;
+                      final String loc = (s['location'] ?? '').toString().toUpperCase();
+                      final bool transcode = s['transcode'] == true;
+                      return ListTile(
+                        leading: Icon(playing ? Icons.play_circle : Icons.pause_circle,
+                            color: playing ? Colors.green : Colors.orangeAccent),
+                        title: Text('${s['user'] ?? '?'} — ${s['title'] ?? ''}',
+                            maxLines: 2, overflow: TextOverflow.ellipsis),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            const SizedBox(height: 4),
+                            LinearProgressIndicator(value: pct / 100),
+                            const SizedBox(height: 4),
+                            Text(<String>[
+                              '${pct.toStringAsFixed(0)}%',
+                              if (s['player'] != null) s['player'].toString(),
+                              if (s['address'] != null) '${s['address']}${loc.isNotEmpty ? ' ($loc)' : ''}',
+                              if (bw != null) '${(bw / 1000).toStringAsFixed(1)} Mbit/s',
+                              transcode ? 'transcode' : 'direct',
+                            ].join('  •  ')),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
     );
   }
 }

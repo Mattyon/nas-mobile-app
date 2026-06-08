@@ -41,6 +41,8 @@ const Map<String, Map<String, String>> _strings = {
     'active': 'Active',
     'finished': 'Finished',
     'inLibrary': 'In library',
+    'plexSessions': 'Plex sessions',
+    'noSessions': 'No one is watching right now',
   },
   'cs': {
     'app': 'Mattyho NAS',
@@ -79,6 +81,8 @@ const Map<String, Map<String, String>> _strings = {
     'active': 'Aktivní',
     'finished': 'Dokončené',
     'inLibrary': 'V knihovně',
+    'plexSessions': 'Plex relace',
+    'noSessions': 'Nikdo teď nic nesleduje',
   },
 };
 
