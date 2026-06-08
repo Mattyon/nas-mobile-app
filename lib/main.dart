@@ -445,13 +445,19 @@ class DownloadsScreen extends StatefulWidget {
   State<DownloadsScreen> createState() => _DownloadsScreenState();
 }
 
-class _DownloadsScreenState extends State<DownloadsScreen> with LangAware {
+class _DownloadsScreenState extends State<DownloadsScreen>
+    with LangAware, SingleTickerProviderStateMixin {
   List<dynamic> _items = <dynamic>[];
   Timer? _timer;
+  TabController? _tabs;
+  bool _didInitTab = false;
+  final TextEditingController _q = TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    _tabs = TabController(length: 2, vsync: this);
+    _q.addListener(() => setState(() {}));
     _refresh();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _refresh());
   }
@@ -459,13 +465,25 @@ class _DownloadsScreenState extends State<DownloadsScreen> with LangAware {
   @override
   void dispose() {
     _timer?.cancel();
+    _tabs?.dispose();
+    _q.dispose();
     super.dispose();
   }
 
   Future<void> _refresh() async {
     try {
       final List<dynamic> d = await Api.I.downloads();
-      if (mounted) setState(() => _items = d);
+      if (!mounted) return;
+      setState(() {
+        _items = d;
+        // First time data arrives: open Active unless nothing is in progress.
+        if (!_didInitTab && d.isNotEmpty) {
+          _didInitTab = true;
+          final bool hasActive = d.any((dynamic e) =>
+              _group((e as Map<String, dynamic>)['state']?.toString() ?? '') <= 1);
+          _tabs!.index = hasActive ? 0 : 1;
+        }
+      });
     } catch (_) {}
   }
 
@@ -492,9 +510,17 @@ class _DownloadsScreenState extends State<DownloadsScreen> with LangAware {
     return 2;                                // finished / seeding / paused / stopped
   }
 
-  List<Map<String, dynamic>> _sorted() {
-    final List<Map<String, dynamic>> items =
-        _items.map((dynamic e) => e as Map<String, dynamic>).toList();
+  // active=true → downloading+queued; active=false → finished+failed. Filtered by search.
+  List<Map<String, dynamic>> _filtered(bool active) {
+    final String ql = _q.text.trim().toLowerCase();
+    final List<Map<String, dynamic>> items = _items
+        .map((dynamic e) => e as Map<String, dynamic>)
+        .where((Map<String, dynamic> t) {
+      final int g = _group(t['state']?.toString() ?? '');
+      if (active ? g > 1 : g <= 1) return false;
+      if (ql.isEmpty) return true;
+      return (t['name']?.toString() ?? '').toLowerCase().contains(ql);
+    }).toList();
     items.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
       final int ga = _group(a['state']?.toString() ?? '');
       final int gb = _group(b['state']?.toString() ?? '');
@@ -543,10 +569,35 @@ class _DownloadsScreenState extends State<DownloadsScreen> with LangAware {
 
   @override
   Widget build(BuildContext context) {
-    final List<Map<String, dynamic>> items = _sorted();
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: _list(items),
+    final List<Map<String, dynamic>> active = _filtered(true);
+    final List<Map<String, dynamic>> finished = _filtered(false);
+    return Column(
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: TextField(
+            controller: _q,
+            decoration: InputDecoration(
+                isDense: true, hintText: tr('search'), prefixIcon: const Icon(Icons.search)),
+          ),
+        ),
+        TabBar(
+          controller: _tabs,
+          tabs: <Widget>[
+            Tab(text: '${tr('active')} (${active.length})'),
+            Tab(text: '${tr('finished')} (${finished.length})'),
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabs,
+            children: <Widget>[
+              RefreshIndicator(onRefresh: _refresh, child: _list(active)),
+              RefreshIndicator(onRefresh: _refresh, child: _list(finished)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
