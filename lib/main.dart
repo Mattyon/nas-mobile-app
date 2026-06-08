@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
+import 'detail.dart';
 import 'i18n.dart';
 
 final ValueNotifier<int> authTick = ValueNotifier<int>(0);
@@ -734,6 +735,7 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
     setState(() {
       _busy = true;
       _searched = true;
+      _results = <dynamic>[];
     });
     try {
       final List<dynamic> r = await Api.I.search(_q.text.trim(), 'any', lang: lang.value);
@@ -746,7 +748,9 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
   }
 
   Widget _emptyState() {
-    if (_busy) return const SizedBox.shrink(); // loading bar at top shows progress
+    if (_busy) {
+      return const Center(child: CircularProgressIndicator());
+    }
     return Center(
       child: _searched
           ? Text(tr('noResults'))
@@ -774,45 +778,175 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
   }
 
   Future<void> _grab(Map<String, dynamic> item) async {
-    final String? tier = await showModalBottomSheet<String>(
+    // Step 1: language picker
+    final String? language = await _pickLanguage(item);
+    if (language == null || !mounted) return;
+    // Step 2: quality picker
+    final String? tier = await _pickQuality(language);
+    if (tier == null || !mounted) return;
+    await _doGrab(item, language, tier);
+  }
+
+  Future<String?> _pickLanguage(Map<String, dynamic> item) {
+    final bool hasEn = item['on_disk_en'] == true;
+    final bool hasCs = item['on_disk_cs'] == true;
+    final String appLang = lang.value; // app's current language = default
+    return showModalBottomSheet<String>(
+      context: context,
+      builder: (BuildContext ctx) {
+        Widget tile({
+          required String code,
+          required String flag,
+          required String label,
+          String? source,
+          required bool onDisk,
+        }) {
+          final bool isDefault = code == appLang;
+          final List<String> subParts = <String>[
+            if (isDefault) tr('appLanguage'),
+            if (source != null) source,
+          ];
+          return ListTile(
+            selected: isDefault,
+            leading: Text(flag, style: const TextStyle(fontSize: 24)),
+            title: Text(label),
+            subtitle: subParts.isNotEmpty
+                ? Text(subParts.join(' · '), style: const TextStyle(fontSize: 11))
+                : null,
+            trailing: onDisk
+                ? const Icon(Icons.check_circle_outline, color: Colors.green, size: 20)
+                : null,
+            onTap: () => Navigator.pop(ctx, code),
+          );
+        }
+
+        final Widget enTile = tile(
+            code: 'en', flag: '🇬🇧', label: tr('langEnglish'), onDisk: hasEn);
+        final Widget csTile = tile(
+            code: 'cs', flag: '🇨🇿', label: tr('langCzech'),
+            source: 'sktorrent.eu', onDisk: hasCs);
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(tr('pickLanguage'),
+                      style: Theme.of(ctx).textTheme.titleMedium),
+                ),
+              ),
+              // App language comes first
+              if (appLang == 'cs') ...<Widget>[csTile, enTile]
+              else ...<Widget>[enTile, csTile],
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<String?> _pickQuality(String language) {
+    final String flag = language == 'cs' ? '🇨🇿' : '🇬🇧';
+    return showModalBottomSheet<String>(
       context: context,
       builder: (BuildContext ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(tr('pickQuality'),
-                  style: Theme.of(ctx).textTheme.titleMedium),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Row(children: <Widget>[
+                Text(flag, style: const TextStyle(fontSize: 22)),
+                const SizedBox(width: 8),
+                Text(tr('pickQuality'),
+                    style: Theme.of(ctx).textTheme.titleMedium),
+              ]),
             ),
             for (final String t in <String>['fast', 'balanced', 'best'])
               ListTile(
-                leading: const Icon(Icons.download),
+                leading: Icon(
+                  t == 'fast' ? Icons.flash_on_outlined :
+                  t == 'best' ? Icons.star_outline : Icons.balance_outlined,
+                ),
                 title: Text(tr(t)),
                 onTap: () => Navigator.pop(ctx, t),
               ),
+            const SizedBox(height: 8),
           ],
         ),
       ),
     );
-    if (tier == null) return;
+  }
+
+  Future<void> _doGrab(Map<String, dynamic> item, String language, String tier) async {
     setState(() => _grabbing = _key(item));
     final VoidCallback closeStages = _showStages();
     final String itype = item['type']?.toString() ?? 'movie';
     try {
-      await Api.I.grab(
+      final Map<String, dynamic> result = await Api.I.grab(
         type: itype,
         tmdbId: itype == 'movie' ? item['tmdbId'] as int? : null,
         tvdbId: itype == 'tv' ? item['tvdbId'] as int? : null,
         tier: tier,
+        language: language,
       );
-      // TV grabs are async (Sonarr searches + queues episodes over time) -> say so.
+
+      if (result['no_czech_audio'] == true) {
+        closeStages();
+        if (mounted) setState(() => _grabbing = null);
+        await _offerEnglishFallback(item, tier, result['title']?.toString() ?? '');
+        return;
+      }
+
+      // Update local on_disk state immediately.
+      if (mounted) {
+        setState(() {
+          if (itype == 'tv') {
+            // Backend returns current registry state; use it to correct stale Flutter flags.
+            if (result.containsKey('on_disk_en')) item['on_disk_en'] = result['on_disk_en'];
+            if (result.containsKey('on_disk_cs')) item['on_disk_cs'] = result['on_disk_cs'];
+          } else if (language == 'en') {
+            item['on_disk_en'] = true;
+          } else if (language == 'cs') {
+            item['on_disk_cs'] = true;
+          }
+        });
+      }
       _snackGo(itype == 'tv' ? tr('requestedTv') : tr('added'));
     } catch (_) {
       _snack(tr('error'));
     } finally {
       closeStages();
       if (mounted) setState(() => _grabbing = null);
+    }
+  }
+
+  Future<void> _offerEnglishFallback(
+      Map<String, dynamic> item, String tier, String title) async {
+    final String tierLabel = tr(tier);
+    final String msg = tr('noCzechAudioMsg')
+        .replaceFirst('{title}', title)
+        .replaceFirst('{tier}', tierLabel);
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: Text(tr('noCzechAudio')),
+        content: Text(msg),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(tr('cancel'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(tr('downloadInEnglish'))),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await _doGrab(item, 'en', tier);
     }
   }
 
@@ -874,6 +1008,62 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
     ));
   }
 
+  Widget _langChips(Map<String, dynamic> item) {
+    final bool hasEn = item['on_disk_en'] == true;
+    final bool hasCs = item['on_disk_cs'] == true;
+    if (!hasEn && !hasCs) return const SizedBox.shrink();
+    return Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
+      if (hasEn) const Text('🇬🇧', style: TextStyle(fontSize: 13)),
+      if (hasEn && hasCs) const SizedBox(width: 2),
+      if (hasCs) const Text('🇨🇿', style: TextStyle(fontSize: 13)),
+    ]);
+  }
+
+  Widget _buildTrailing(Map<String, dynamic> item, bool busy) {
+    final bool hasEn = item['on_disk_en'] == true;
+    final bool hasCs = item['on_disk_cs'] == true;
+    final bool inLibrary = hasEn && hasCs;
+    final Widget chips = _langChips(item);
+    final Widget dlBtn = SizedBox(
+      height: 30,
+      child: FilledButton.tonal(
+        onPressed: busy ? null : () => _grab(item),
+        style: FilledButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          textStyle: const TextStyle(fontSize: 12),
+        ),
+        child: busy
+            ? const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
+            : Text(tr('download')),
+      ),
+    );
+    if (inLibrary) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: <Widget>[
+          chips,
+          const SizedBox(height: 2),
+          Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
+            const Icon(Icons.check_circle, size: 13, color: Colors.green),
+            const SizedBox(width: 3),
+            Text(tr('inLibraryBoth'),
+                style: const TextStyle(fontSize: 10, color: Colors.green)),
+          ]),
+        ],
+      );
+    }
+    if (hasEn || hasCs) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: <Widget>[chips, const SizedBox(height: 3), dlBtn],
+      );
+    }
+    return dlBtn;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -887,10 +1077,10 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
             decoration: InputDecoration(
               hintText: tr('searchHint'),
               prefixIcon: const Icon(Icons.search),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             ),
           ),
         ),
-        if (_busy) const LinearProgressIndicator(),
         Expanded(
           child: _results.isEmpty
               ? _emptyState()
@@ -899,8 +1089,10 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
                   itemBuilder: (BuildContext context, int i) {
                     final Map<String, dynamic> m = _results[i] as Map<String, dynamic>;
                     final bool busy = _grabbing == _key(m);
-                    final bool onDisk = m['hasFile'] == true;
                     return ListTile(
+                      onTap: () => Navigator.push<void>(context,
+                          MaterialPageRoute<void>(
+                              builder: (_) => DetailScreen(item: m))),
                       leading: PosterImage(m['poster'] as String?),
                       title: Text(m['title']?.toString() ?? ''),
                       subtitle: Row(
@@ -910,26 +1102,7 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
                           Text(m['year']?.toString() ?? ''),
                         ],
                       ),
-                      // On disk → green check, no button.
-                      // Added but no file → show download button (allows retry).
-                      // Not added → download button.
-                      trailing: onDisk
-                          ? Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: <Widget>[
-                                const Icon(Icons.check_circle, size: 18, color: Colors.green),
-                                const SizedBox(width: 4),
-                                Text(tr('onDisk'), style: const TextStyle(fontSize: 12)),
-                              ],
-                            )
-                          : FilledButton.tonal(
-                              onPressed: busy ? null : () => _grab(m),
-                              child: busy
-                                  ? const SizedBox(
-                                      height: 18, width: 18,
-                                      child: CircularProgressIndicator(strokeWidth: 2))
-                                  : Text(tr('download')),
-                            ),
+                      trailing: _buildTrailing(m, busy),
                     );
                   },
                 ),
