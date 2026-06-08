@@ -285,6 +285,7 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
     );
     if (tier == null) return;
     setState(() => _grabbing = _key(item));
+    final VoidCallback closeStages = _showStages();
     try {
       await Api.I.grab(
         type: _type,
@@ -297,8 +298,48 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
     } catch (_) {
       _snack(tr('error'));
     } finally {
+      closeStages();
       if (mounted) setState(() => _grabbing = null);
     }
+  }
+
+  /// Modal with a spinner that cycles through stage messages while we wait.
+  VoidCallback _showStages() {
+    final List<String> stages = <String>[
+      tr('stageSearch'), tr('stageDatabases'), tr('stagePick'), tr('stageStart'),
+    ];
+    final ValueNotifier<int> step = ValueNotifier<int>(0);
+    final Timer timer = Timer.periodic(const Duration(milliseconds: 1600), (_) {
+      if (step.value < stages.length - 1) step.value++;
+    });
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const SizedBox(
+                  width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+              const SizedBox(width: 18),
+              Flexible(
+                child: ValueListenableBuilder<int>(
+                  valueListenable: step,
+                  builder: (_, int i, _) => Text(stages[i]),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return () {
+      timer.cancel();
+      step.dispose();
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    };
   }
 
   void _snack(String m) {
@@ -424,18 +465,18 @@ class _DownloadsScreenState extends State<DownloadsScreen> with LangAware {
     return '${sec}s';
   }
 
-  static const Set<String> _active = <String>{
+  static const Set<String> _activeStates = <String>{
     'downloading', 'forcedDL', 'metaDL', 'stalledDL', 'checkingDL', 'allocating'
   };
-  static const Set<String> _failed = <String>{'error', 'missingFiles'};
+  static const Set<String> _failedStates = <String>{'error', 'missingFiles'};
 
-  bool _isFailed(String s) => _failed.contains(s);
+  bool _isFailed(String s) => _failedStates.contains(s);
 
   int _group(String s) {
-    if (_active.contains(s)) return 0;     // active downloads
-    if (s == 'queuedDL') return 1;         // queued
-    if (_isFailed(s)) return 3;            // failed (last, red)
-    return 2;                              // finished / seeding / paused / stopped
+    if (_activeStates.contains(s)) return 0; // active downloads
+    if (s == 'queuedDL') return 1;           // queued
+    if (_isFailed(s)) return 3;              // failed (last, red)
+    return 2;                                // finished / seeding / paused / stopped
   }
 
   List<Map<String, dynamic>> _sorted() {
@@ -446,14 +487,45 @@ class _DownloadsScreenState extends State<DownloadsScreen> with LangAware {
       final int gb = _group(b['state']?.toString() ?? '');
       if (ga != gb) return ga.compareTo(gb);
       if (ga == 0) {
-        // active: most-complete first
-        final double pa = (a['progress'] as num?)?.toDouble() ?? 0;
-        final double pb = (b['progress'] as num?)?.toDouble() ?? 0;
-        return pb.compareTo(pa);
+        return ((b['progress'] as num?)?.toDouble() ?? 0)
+            .compareTo((a['progress'] as num?)?.toDouble() ?? 0);
       }
       return 0;
     });
     return items;
+  }
+
+  Widget _tile(Map<String, dynamic> t) {
+    final double pct = (t['progress'] as num?)?.toDouble() ?? 0;
+    final bool failed = _isFailed(t['state']?.toString() ?? '');
+    final TextStyle? red = failed ? const TextStyle(color: Colors.redAccent) : null;
+    return ListTile(
+      title: Text(t['name']?.toString() ?? '',
+          maxLines: 1, overflow: TextOverflow.ellipsis, style: red),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const SizedBox(height: 4),
+          LinearProgressIndicator(value: pct / 100, color: failed ? Colors.redAccent : null),
+          const SizedBox(height: 4),
+          Text('${pct.toStringAsFixed(1)}%  •  ${t['dlspeed_mbps'] ?? 0} Mbit/s  •  '
+              'ETA ${_eta(t['eta_sec'])}  •  ${t['state'] ?? ''}', style: red),
+        ],
+      ),
+    );
+  }
+
+  Widget _list(List<Map<String, dynamic>> items) {
+    if (items.isEmpty) {
+      return ListView(children: <Widget>[
+        const SizedBox(height: 120),
+        Center(child: Text(tr('noResults'))),
+      ]);
+    }
+    return ListView.builder(
+      itemCount: items.length,
+      itemBuilder: (BuildContext context, int i) => _tile(items[i]),
+    );
   }
 
   @override
@@ -461,39 +533,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> with LangAware {
     final List<Map<String, dynamic>> items = _sorted();
     return RefreshIndicator(
       onRefresh: _refresh,
-      child: items.isEmpty
-          ? ListView(children: <Widget>[
-              const SizedBox(height: 120),
-              Center(child: Text(tr('noResults'))),
-            ])
-          : ListView.builder(
-              itemCount: items.length,
-              itemBuilder: (BuildContext context, int i) {
-                final Map<String, dynamic> t = items[i];
-                final double pct = (t['progress'] as num?)?.toDouble() ?? 0;
-                final bool failed = _isFailed(t['state']?.toString() ?? '');
-                return ListTile(
-                  title: Text(t['name']?.toString() ?? '', maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: failed ? const TextStyle(color: Colors.redAccent) : null),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      const SizedBox(height: 4),
-                      LinearProgressIndicator(
-                        value: pct / 100,
-                        color: failed ? Colors.redAccent : null,
-                      ),
-                      const SizedBox(height: 4),
-                      Text('${pct.toStringAsFixed(1)}%  •  '
-                          '${t['dlspeed_mbps'] ?? 0} Mbit/s  •  ETA ${_eta(t['eta_sec'])}  •  '
-                          '${t['state'] ?? ''}',
-                          style: failed ? const TextStyle(color: Colors.redAccent) : null),
-                    ],
-                  ),
-                );
-              },
-            ),
+      child: _list(items),
     );
   }
 }
