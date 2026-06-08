@@ -268,13 +268,17 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
   String _type = 'movie';
   List<dynamic> _results = <dynamic>[];
   bool _busy = false;
+  bool _searched = false; // a search has actually run
   String? _grabbing; // key of the item currently being requested
 
   String _key(Map<String, dynamic> m) => '$_type-${m['tmdbId'] ?? m['tvdbId']}';
 
   Future<void> _run() async {
     if (_q.text.trim().isEmpty) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _searched = true;
+    });
     try {
       final List<dynamic> r = await Api.I.search(_q.text.trim(), _type);
       setState(() => _results = r);
@@ -283,6 +287,31 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Widget _emptyState() {
+    return Center(
+      child: _searched
+          ? Text(tr('noResults'))
+          : Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(Icons.movie_filter_outlined,
+                      size: 64, color: Colors.white.withValues(alpha: 0.4)),
+                  const SizedBox(height: 16),
+                  Text(tr('searchEmptyTitle'),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                      textAlign: TextAlign.center),
+                  const SizedBox(height: 8),
+                  Text(tr('searchEmptyHint'),
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+                      textAlign: TextAlign.center),
+                ],
+              ),
+            ),
+    );
   }
 
   Future<void> _grab(Map<String, dynamic> item) async {
@@ -422,7 +451,7 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
         if (_busy) const LinearProgressIndicator(),
         Expanded(
           child: _results.isEmpty
-              ? Center(child: Text(tr('noResults')))
+              ? _emptyState()
               : ListView.builder(
                   itemCount: _results.length,
                   itemBuilder: (BuildContext context, int i) {
