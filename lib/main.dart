@@ -23,6 +23,13 @@ const AndroidNotificationChannel _dlChannel = AndroidNotificationChannel(
   importance: Importance.high,
 );
 
+const AndroidNotificationChannel _alertChannel = AndroidNotificationChannel(
+  'nas_alerts',
+  'NAS Alerts',
+  description: 'NAS download completions, errors, and health alerts',
+  importance: Importance.high,
+);
+
 Future<void> _initNotifications() async {
   const AndroidInitializationSettings android =
       AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -30,6 +37,7 @@ Future<void> _initNotifications() async {
   final AndroidFlutterLocalNotificationsPlugin? ap = _flnp
       .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
   await ap?.createNotificationChannel(_dlChannel);
+  await ap?.createNotificationChannel(_alertChannel);
   await ap?.requestNotificationsPermission();
 }
 
@@ -49,6 +57,49 @@ Future<void> _notifyDownloadDone(String name) async {
       ),
     ),
   );
+}
+
+Future<void> _showSystemNotification(Map<String, dynamic> n) async {
+  final bool cs = lang.value == 'cs';
+  final String title = (cs
+          ? (n['title_cs']?.toString() ?? n['title']?.toString())
+          : n['title']?.toString()) ??
+      '';
+  final String body = (cs
+          ? (n['body_cs']?.toString() ?? n['body']?.toString())
+          : n['body']?.toString()) ??
+      '';
+  await _flnp.show(
+    id: (n['id'] as int? ?? 0).abs() % 100000,
+    title: title,
+    body: body,
+    notificationDetails: NotificationDetails(
+      android: AndroidNotificationDetails(
+        _alertChannel.id,
+        _alertChannel.name,
+        channelDescription: _alertChannel.description,
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+      ),
+    ),
+  );
+}
+
+/// Compact relative timestamp: "now", "5m", "2h", "3d", "8.6."
+String _formatTs(String? ts) {
+  if (ts == null || ts.isEmpty) return '';
+  try {
+    final DateTime dt = DateTime.parse(ts).toLocal();
+    final Duration diff = DateTime.now().difference(dt);
+    if (diff.inSeconds < 60) return 'now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
+    if (diff.inHours < 24) return '${diff.inHours}h';
+    if (diff.inDays < 7) return '${diff.inDays}d';
+    return '${dt.day}.${dt.month}.';
+  } catch (_) {
+    return '';
+  }
 }
 
 Future<void> main() async {
@@ -163,12 +214,14 @@ class NotificationBell extends StatefulWidget {
 class _NotificationBellState extends State<NotificationBell> with LangAware {
   List<dynamic> _items = <dynamic>[];
   int _unreadCount = 0;
+  int _lastSeenId = 0;  // persisted across launches; baseline for system-notification dedup
+  bool _baselineSet = false; // true after first poll — prevents stale items re-notifying
   Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _poll();
+    _loadAndPoll();
     _timer = Timer.periodic(const Duration(seconds: 60), (_) => _poll());
   }
 
@@ -178,11 +231,42 @@ class _NotificationBellState extends State<NotificationBell> with LangAware {
     super.dispose();
   }
 
+  Future<void> _loadAndPoll() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    _lastSeenId = prefs.getInt('last_notif_id') ?? 0;
+    await _poll();
+  }
+
   Future<void> _poll() async {
     try {
       final Map<String, dynamic> data = await Api.I.notifications();
       final List<dynamic> items = (data['notifications'] as List<dynamic>?) ?? <dynamic>[];
       final int unread = (data['unread_count'] as int?) ?? 0;
+
+      // Detect notifications newer than the last one we processed.
+      final List<Map<String, dynamic>> fresh = items
+          .whereType<Map<String, dynamic>>()
+          .where((Map<String, dynamic> n) => (n['id'] as int? ?? 0) > _lastSeenId)
+          .toList();
+
+      if (fresh.isNotEmpty) {
+        final int newMax = fresh
+            .map((Map<String, dynamic> n) => n['id'] as int? ?? 0)
+            .reduce((int a, int b) => a > b ? a : b);
+        _lastSeenId = newMax;
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('last_notif_id', newMax);
+
+        // Only fire system notifications after the baseline poll — prevents
+        // re-notifying for items that were already in the list when the app launched.
+        if (_baselineSet) {
+          for (final Map<String, dynamic> n in fresh.take(3)) {
+            await _showSystemNotification(n);
+          }
+        }
+      }
+      _baselineSet = true;
+
       if (mounted) setState(() { _items = items; _unreadCount = unread; });
     } catch (_) {}
   }
@@ -238,9 +322,26 @@ class _NotificationBellState extends State<NotificationBell> with LangAware {
                         final String displayBody = cs
                             ? (n['body_cs']?.toString() ?? n['body']?.toString() ?? '')
                             : (n['body']?.toString() ?? '');
+                        final String timeStr = _formatTs(n['ts']?.toString());
                         return ListTile(
-                          title: Text(displayTitle,
-                              style: const TextStyle(fontWeight: FontWeight.w500)),
+                          title: Row(
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(displayTitle,
+                                    style: const TextStyle(fontWeight: FontWeight.w500)),
+                              ),
+                              if (timeStr.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 6),
+                                  child: Text(timeStr,
+                                      style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey[500])),
+                                ),
+                            ],
+                          ),
                           subtitle: Text(displayBody,
                               maxLines: 3, overflow: TextOverflow.ellipsis),
                           dense: true,
