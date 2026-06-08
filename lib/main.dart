@@ -3327,10 +3327,13 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
     final String message = item['message'] as String? ?? '';
     final Map<String, dynamic>? alt = item['alternative'] as Map<String, dynamic>?;
     final int? queueItemId = item['queue_item_id'] as int?;
+    final List<dynamic> queueItemIds =
+        (item['queue_item_ids'] as List<dynamic>?) ?? <dynamic>[];
     final String? itemType = item['item_type'] as String?;
     final int? itemId = item['item_id'] as int?;
     final String swapKey = '${itemType}_${itemId}_$queueItemId';
     final bool swapping = _swapping == swapKey;
+    final int groupCount = queueItemIds.length > 1 ? queueItemIds.length : 0;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -3346,6 +3349,20 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
               Text(tr('healthCheckStalled'),
                   style: const TextStyle(
                       fontWeight: FontWeight.w600, color: Colors.amber)),
+              if (groupCount > 0) ...<Widget>[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text('$groupCount items',
+                      style: const TextStyle(
+                          fontSize: 10, fontWeight: FontWeight.w700,
+                          color: Colors.amber)),
+                ),
+              ],
             ]),
             const SizedBox(height: 4),
             Text(message, style: const TextStyle(fontSize: 12)),
@@ -3418,7 +3435,9 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
                       ),
                       onPressed: swapping ? null : () => _resolve(item),
                       icon: const Icon(Icons.auto_fix_high, size: 15),
-                      label: Text(tr('aiFix')),
+                      label: Text(groupCount > 0
+                          ? '${tr('aiFix')} ($groupCount)'
+                          : tr('aiFix')),
                     ),
             ),
           ],
