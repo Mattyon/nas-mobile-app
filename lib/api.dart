@@ -349,6 +349,20 @@ class Api {
     return '';
   }
 
+  Future<String> chat(List<Map<String, String>> messages) async {
+    final r = await _dio.post<Map<String, dynamic>>('/chat',
+        data: <String, dynamic>{'messages': messages});
+    return (r.data!['reply'] as String?) ?? '';
+  }
+
+  Future<Map<String, dynamic>> speedtest() async {
+    final r = await _dio.get<Map<String, dynamic>>(
+      '/speedtest',
+      options: Options(receiveTimeout: const Duration(seconds: 90)),
+    );
+    return r.data ?? <String, dynamic>{};
+  }
+
   Future<List<dynamic>> notifications() async {
     final r = await _dio.get<Map<String, dynamic>>('/notifications');
     return (r.data?['notifications'] as List<dynamic>?) ?? <dynamic>[];
