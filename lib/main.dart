@@ -1,30 +1,50 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
 import 'i18n.dart';
 
 final ValueNotifier<int> authTick = ValueNotifier<int>(0);
 final ValueNotifier<int> selectedTab = ValueNotifier<int>(0); // 0=Search 1=Downloads 2=Library
+final ValueNotifier<ThemeMode> themeMode = ValueNotifier<ThemeMode>(ThemeMode.dark);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Api.I.init();
+  final prefs = await SharedPreferences.getInstance();
+  final bool isDark = prefs.getBool('darkMode') ?? true;
+  themeMode.value = isDark ? ThemeMode.dark : ThemeMode.light;
   runApp(const NasApp());
+}
+
+Future<void> _toggleTheme() async {
+  final isDark = themeMode.value == ThemeMode.dark;
+  themeMode.value = isDark ? ThemeMode.light : ThemeMode.dark;
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool('darkMode', !isDark);
 }
 
 class NasApp extends StatelessWidget {
   const NasApp({super.key});
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'NAS',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: Colors.indigo,
-        brightness: Brightness.dark,
-        useMaterial3: true,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeMode,
+      builder: (BuildContext context, ThemeMode mode, Widget? _) => MaterialApp(
+        title: 'NAS',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+            colorSchemeSeed: Colors.indigo,
+            brightness: Brightness.light,
+            useMaterial3: true),
+        darkTheme: ThemeData(
+            colorSchemeSeed: Colors.indigo,
+            brightness: Brightness.dark,
+            useMaterial3: true),
+        themeMode: mode,
+        home: const AuthGate(),
       ),
-      home: const AuthGate(),
     );
   }
 }
@@ -369,72 +389,100 @@ class _HomeShellState extends State<HomeShell> with LangAware {
           title: Text(tr('app')),
           actions: <Widget>[
             const LangButton(),
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert),
-              onSelected: (String v) async {
-                if (v == 'sessions') {
-                  Navigator.of(context).push(MaterialPageRoute<void>(
-                      builder: (_) => const SessionsScreen()));
-                } else if (v == 'users') {
-                  Navigator.of(context).push(MaterialPageRoute<void>(
-                      builder: (_) => const UsersScreen()));
-                } else if (v == 'speed') {
-                  _showSpeedDialog(context);
-                } else if (v == 'logout') {
-                  await Api.I.logout();
-                  authTick.value++;
-                }
-              },
-              itemBuilder: (BuildContext ctx) => <PopupMenuEntry<String>>[
-                PopupMenuItem<String>(
-                  enabled: false,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(Api.I.displayName ?? Api.I.username ?? '—',
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                      Text(Api.I.role,
-                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                    ],
-                  ),
-                ),
-                const PopupMenuDivider(),
-                if (Api.I.isAdmin)
+            ValueListenableBuilder<ThemeMode>(
+              valueListenable: themeMode,
+              builder: (BuildContext ctx2, ThemeMode mode, Widget? _) =>
+                  PopupMenuButton<String>(
+                icon: const Icon(Icons.menu),
+                onSelected: (String v) async {
+                  if (v == 'sessions') {
+                    Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => const SessionsScreen()));
+                  } else if (v == 'users') {
+                    Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => const UsersScreen()));
+                  } else if (v == 'speed') {
+                    _showSpeedDialog(context);
+                  } else if (v == 'theme') {
+                    await _toggleTheme();
+                  } else if (v == 'logout') {
+                    await Api.I.logout();
+                    authTick.value++;
+                  } else if (v == 'kill') {
+                    exit(0);
+                  }
+                },
+                itemBuilder: (BuildContext ctx) => <PopupMenuEntry<String>>[
                   PopupMenuItem<String>(
-                    value: 'sessions',
+                    enabled: false,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(Api.I.displayName ?? Api.I.username ?? '—',
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text(Api.I.role,
+                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(),
+                  if (Api.I.isAdmin)
+                    PopupMenuItem<String>(
+                      value: 'sessions',
+                      child: Row(children: <Widget>[
+                        const Icon(Icons.cast_connected, size: 20),
+                        const SizedBox(width: 12),
+                        Text(tr('plexSessions')),
+                      ]),
+                    ),
+                  if (Api.I.isAdmin)
+                    PopupMenuItem<String>(
+                      value: 'speed',
+                      child: Row(children: <Widget>[
+                        const Icon(Icons.speed, size: 20),
+                        const SizedBox(width: 12),
+                        Text(tr('speedLimits')),
+                      ]),
+                    ),
+                  if (Api.I.isAdmin)
+                    PopupMenuItem<String>(
+                      value: 'users',
+                      child: Row(children: <Widget>[
+                        const Icon(Icons.people, size: 20),
+                        const SizedBox(width: 12),
+                        Text(tr('userManagement')),
+                      ]),
+                    ),
+                  PopupMenuItem<String>(
+                    value: 'theme',
                     child: Row(children: <Widget>[
-                      const Icon(Icons.cast_connected, size: 20),
+                      Icon(mode == ThemeMode.dark ? Icons.light_mode : Icons.dark_mode,
+                          size: 20),
                       const SizedBox(width: 12),
-                      Text(tr('plexSessions')),
+                      Text(mode == ThemeMode.dark ? tr('lightMode') : tr('darkMode')),
                     ]),
                   ),
-                if (Api.I.isAdmin)
                   PopupMenuItem<String>(
-                    value: 'speed',
+                    value: 'logout',
                     child: Row(children: <Widget>[
-                      const Icon(Icons.speed, size: 20),
+                      const Icon(Icons.logout, size: 20),
                       const SizedBox(width: 12),
-                      Text(tr('speedLimits')),
+                      Text(tr('logout')),
                     ]),
                   ),
-                if (Api.I.isAdmin)
+                  const PopupMenuDivider(),
                   PopupMenuItem<String>(
-                    value: 'users',
+                    value: 'kill',
                     child: Row(children: <Widget>[
-                      const Icon(Icons.people, size: 20),
+                      const Icon(Icons.power_settings_new, size: 20,
+                          color: Colors.redAccent),
                       const SizedBox(width: 12),
-                      Text(tr('userManagement')),
+                      Text(tr('killApp'),
+                          style: const TextStyle(color: Colors.redAccent)),
                     ]),
                   ),
-                PopupMenuItem<String>(
-                  value: 'logout',
-                  child: Row(children: <Widget>[
-                    const Icon(Icons.logout, size: 20),
-                    const SizedBox(width: 12),
-                    Text(tr('logout')),
-                  ]),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),

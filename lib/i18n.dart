@@ -65,6 +65,9 @@ const Map<String, Map<String, String>> _strings = {
     'isAdmin': 'Administrator',
     'rememberMe': 'Remember me',
     'loginWithBiometrics': 'Log in with fingerprint / face',
+    'killApp': 'Kill app',
+    'darkMode': 'Dark mode',
+    'lightMode': 'Light mode',
     'deleteUser': 'Delete user',
   },
   'cs': {
@@ -128,6 +131,9 @@ const Map<String, Map<String, String>> _strings = {
     'isAdmin': 'Administrátor',
     'rememberMe': 'Zapamatovat mě',
     'loginWithBiometrics': 'Přihlásit otiskem / obličejem',
+    'killApp': 'Ukončit aplikaci',
+    'darkMode': 'Tmavý režim',
+    'lightMode': 'Světlý režim',
     'deleteUser': 'Smazat uživatele',
   },
 };
