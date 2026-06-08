@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'api.dart';
 import 'i18n.dart';
 
 final ValueNotifier<int> authTick = ValueNotifier<int>(0);
+final ValueNotifier<int> selectedTab = ValueNotifier<int>(0); // 0=Search 1=Downloads 2=Library
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -190,7 +192,6 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> with LangAware {
-  int _tab = 0;
   static const List<Widget> _pages = <Widget>[
     SearchScreen(),
     DownloadsScreen(),
@@ -199,30 +200,33 @@ class _HomeShellState extends State<HomeShell> with LangAware {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(tr('app')),
-        actions: <Widget>[
-          const LangButton(),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: tr('logout'),
-            onPressed: () async {
-              await Api.I.logout();
-              authTick.value++;
-            },
-          ),
-        ],
-      ),
-      body: _pages[_tab],
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: (int i) => setState(() => _tab = i),
-        destinations: <NavigationDestination>[
-          NavigationDestination(icon: const Icon(Icons.search), label: tr('search')),
-          NavigationDestination(icon: const Icon(Icons.download), label: tr('downloads')),
-          NavigationDestination(icon: const Icon(Icons.video_library), label: tr('library')),
-        ],
+    return ValueListenableBuilder<int>(
+      valueListenable: selectedTab,
+      builder: (BuildContext context, int tab, Widget? _) => Scaffold(
+        appBar: AppBar(
+          title: Text(tr('app')),
+          actions: <Widget>[
+            const LangButton(),
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: tr('logout'),
+              onPressed: () async {
+                await Api.I.logout();
+                authTick.value++;
+              },
+            ),
+          ],
+        ),
+        body: _pages[tab],
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: tab,
+          onDestinationSelected: (int i) => selectedTab.value = i,
+          destinations: <NavigationDestination>[
+            NavigationDestination(icon: const Icon(Icons.search), label: tr('search')),
+            NavigationDestination(icon: const Icon(Icons.download), label: tr('downloads')),
+            NavigationDestination(icon: const Icon(Icons.video_library), label: tr('library')),
+          ],
+        ),
       ),
     );
   }
@@ -288,7 +292,8 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
         tvdbId: _type == 'tv' ? item['tvdbId'] as int? : null,
         tier: tier,
       );
-      _snack(tr('added'));
+      // TV grabs are async (Sonarr searches + queues episodes over time) -> say so.
+      _snackGo(_type == 'tv' ? tr('requestedTv') : tr('added'));
     } catch (_) {
       _snack(tr('error'));
     } finally {
@@ -300,6 +305,19 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
     }
+  }
+
+  // Snackbar with a "Downloads" action that jumps to the Downloads tab.
+  void _snackGo(String m) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(m),
+      duration: const Duration(seconds: 6),
+      action: SnackBarAction(
+        label: tr('downloads'),
+        onPressed: () => selectedTab.value = 1,
+      ),
+    ));
   }
 
   @override
@@ -375,11 +393,19 @@ class DownloadsScreen extends StatefulWidget {
 
 class _DownloadsScreenState extends State<DownloadsScreen> with LangAware {
   List<dynamic> _items = <dynamic>[];
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _refresh();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _refresh());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 
   Future<void> _refresh() async {
@@ -387,6 +413,15 @@ class _DownloadsScreenState extends State<DownloadsScreen> with LangAware {
       final List<dynamic> d = await Api.I.downloads();
       if (mounted) setState(() => _items = d);
     } catch (_) {}
+  }
+
+  String _eta(Object? s) {
+    final int sec = (s is num) ? s.toInt() : 0;
+    if (sec <= 0 || sec >= 8640000) return '∞';
+    final int h = sec ~/ 3600, m = (sec % 3600) ~/ 60;
+    if (h > 0) return '${h}h ${m}m';
+    if (m > 0) return '${m}m';
+    return '${sec}s';
   }
 
   @override
@@ -413,7 +448,8 @@ class _DownloadsScreenState extends State<DownloadsScreen> with LangAware {
                       LinearProgressIndicator(value: pct / 100),
                       const SizedBox(height: 4),
                       Text('${pct.toStringAsFixed(1)}%  •  '
-                          '${t['dlspeed_mbps'] ?? 0} Mbit/s  •  ${t['state'] ?? ''}'),
+                          '${t['dlspeed_mbps'] ?? 0} Mbit/s  •  ETA ${_eta(t['eta_sec'])}  •  '
+                          '${t['state'] ?? ''}'),
                     ],
                   ),
                 );

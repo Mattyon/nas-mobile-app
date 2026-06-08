@@ -33,6 +33,7 @@ const Map<String, Map<String, String>> _strings = {
     'loginFailed': 'Login failed',
     'adminOnly': 'Admins only',
     'error': 'Something went wrong',
+    'requestedTv': 'Requested — finding & queueing episodes…',
   },
   'cs': {
     'app': 'Mattyho NAS',
@@ -63,6 +64,7 @@ const Map<String, Map<String, String>> _strings = {
     'loginFailed': 'Přihlášení selhalo',
     'adminOnly': 'Pouze administrátoři',
     'error': 'Něco se pokazilo',
+    'requestedTv': 'Požadováno — hledám a řadím epizody…',
   },
 };
 
