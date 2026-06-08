@@ -344,9 +344,11 @@ class Api {
 
   static String errorDetail(Object e) {
     if (e is DioException) {
-      final dynamic detail =
-          (e.response?.data as Map<String, dynamic>?)?['detail'];
-      if (detail is String && detail.isNotEmpty) return detail;
+      final dynamic data = e.response?.data;
+      if (data is Map<String, dynamic>) {
+        final dynamic detail = data['detail'];
+        if (detail is String && detail.isNotEmpty) return detail;
+      }
     }
     return '';
   }

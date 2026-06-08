@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:workmanager/workmanager.dart';
 import 'api.dart';
 import 'detail.dart';
 import 'i18n.dart';
@@ -102,14 +105,151 @@ String _formatTs(String? ts) {
   }
 }
 
+// ----------------------------- background task (WorkManager) -----------------
+
+/// WorkManager callback dispatcher — runs in a separate Dart isolate.
+/// Must be a top-level function annotated @pragma('vm:entry-point').
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((String task, Map<String, dynamic>? inputData) async {
+    await _bgPollNotifications();
+    return true;
+  });
+}
+
+/// Raw HTTP GET in the background isolate (Dio is not available here).
+Future<Map<String, dynamic>?> _bgHttpGet(String url, String token) async {
+  HttpClient? client;
+  try {
+    client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+    final HttpClientRequest req = await client.getUrl(Uri.parse(url));
+    req.headers.set('Authorization', 'Bearer $token');
+    final HttpClientResponse resp = await req.close();
+    if (resp.statusCode != 200) return null;
+    final String body = await resp.transform(utf8.decoder).join();
+    return jsonDecode(body) as Map<String, dynamic>;
+  } catch (_) {
+    return null;
+  } finally {
+    client?.close();
+  }
+}
+
+/// POST to /login; returns the new JWT on success.
+Future<String?> _bgReauth(String baseUrl, FlutterSecureStorage secure) async {
+  try {
+    final String? expStr = await secure.read(key: 'rememberExpiry');
+    final int exp = int.tryParse(expStr ?? '') ?? 0;
+    if (DateTime.now().millisecondsSinceEpoch >= exp) return null;
+    final String? user = await secure.read(key: 'rememberUser');
+    final String? pass = await secure.read(key: 'rememberPass');
+    if (user == null || pass == null) return null;
+    HttpClient? client;
+    try {
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+      final HttpClientRequest req = await client.postUrl(Uri.parse('$baseUrl/login'));
+      req.headers.contentType = ContentType.json;
+      req.write(jsonEncode(<String, String>{'username': user, 'password': pass}));
+      final HttpClientResponse resp = await req.close();
+      if (resp.statusCode != 200) return null;
+      final String body = await resp.transform(utf8.decoder).join();
+      final String? newToken =
+          (jsonDecode(body) as Map<String, dynamic>)['token'] as String?;
+      if (newToken != null) await secure.write(key: 'token', value: newToken);
+      return newToken;
+    } finally {
+      client?.close();
+    }
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Core background notification poll — same logic as the foreground bell but
+/// runs in a WorkManager isolate and therefore works even when the app is killed.
+Future<void> _bgPollNotifications() async {
+  final SharedPreferences prefs = await SharedPreferences.getInstance();
+  final String baseUrl =
+      prefs.getString('baseUrl') ?? 'https://nas.mattyzem.com';
+  final int lastId = prefs.getInt('last_notif_id') ?? 0;
+  final String appLang = prefs.getString('app_lang') ?? 'en';
+
+  const FlutterSecureStorage secure = FlutterSecureStorage();
+  String? token = await secure.read(key: 'token');
+
+  // Fetch; on 401 try to get a fresh token and retry once.
+  Map<String, dynamic>? data = await _bgHttpGet('$baseUrl/notifications', token ?? '');
+  if (data == null) {
+    token = await _bgReauth(baseUrl, secure);
+    if (token == null) return;
+    data = await _bgHttpGet('$baseUrl/notifications', token);
+    if (data == null) return;
+  }
+
+  final List<dynamic> items =
+      (data['notifications'] as List<dynamic>?) ?? <dynamic>[];
+  final List<Map<String, dynamic>> fresh = items
+      .whereType<Map<String, dynamic>>()
+      .where((Map<String, dynamic> n) => (n['id'] as int? ?? 0) > lastId)
+      .toList();
+  if (fresh.isEmpty) return;
+
+  final int newMax = fresh
+      .map((Map<String, dynamic> n) => n['id'] as int? ?? 0)
+      .reduce((int a, int b) => a > b ? a : b);
+  await prefs.setInt('last_notif_id', newMax);
+
+  final FlutterLocalNotificationsPlugin flnp = FlutterLocalNotificationsPlugin();
+  const AndroidInitializationSettings android =
+      AndroidInitializationSettings('@mipmap/ic_launcher');
+  await flnp.initialize(settings: const InitializationSettings(android: android));
+
+  final bool cs = appLang == 'cs';
+  for (final Map<String, dynamic> n in fresh.take(3)) {
+    final String title = (cs
+            ? (n['title_cs']?.toString() ?? n['title']?.toString())
+            : n['title']?.toString()) ??
+        '';
+    final String body = (cs
+            ? (n['body_cs']?.toString() ?? n['body']?.toString())
+            : n['body']?.toString()) ??
+        '';
+    await flnp.show(
+      id: (n['id'] as int? ?? 0).abs() % 100000,
+      title: title,
+      body: body,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'nas_alerts',
+          'NAS Alerts',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+      ),
+    );
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   await Api.I.init();
   if (Platform.isAndroid) await _initNotifications();
-  final prefs = await SharedPreferences.getInstance();
+  final SharedPreferences prefs = await SharedPreferences.getInstance();
   final bool isDark = prefs.getBool('darkMode') ?? true;
   themeMode.value = isDark ? ThemeMode.dark : ThemeMode.light;
+  lang.value = prefs.getString('app_lang') ?? 'en';
+  if (Platform.isAndroid) {
+    await Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
+    await Workmanager().registerPeriodicTask(
+      'nas_notif_periodic',
+      'poll_notifications',
+      frequency: const Duration(minutes: 15),
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
+      constraints: Constraints(networkType: NetworkType.connected),
+    );
+  }
   runApp(const NasApp());
 }
 
@@ -118,6 +258,12 @@ Future<void> _toggleTheme() async {
   themeMode.value = isDark ? ThemeMode.light : ThemeMode.dark;
   final prefs = await SharedPreferences.getInstance();
   await prefs.setBool('darkMode', !isDark);
+}
+
+Future<void> _toggleLang() async {
+  toggleLang();
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('app_lang', lang.value);
 }
 
 class NasApp extends StatelessWidget {
@@ -196,7 +342,7 @@ class LangButton extends StatelessWidget {
     return ValueListenableBuilder<String>(
       valueListenable: lang,
       builder: (BuildContext context, String code, Widget? _) => IconButton(
-        onPressed: toggleLang,
+        onPressed: _toggleLang,
         tooltip: tr('language'),
         icon: Text(code == 'cs' ? '🇨🇿' : '🇬🇧', style: const TextStyle(fontSize: 22)),
       ),

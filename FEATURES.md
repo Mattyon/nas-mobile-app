@@ -69,11 +69,20 @@ Complete list of everything the app and gateway can do.
 - Search within library
 
 ### Notifications Bell (AppBar)
-- Bell icon with red badge showing unread count (badge clears when panel is opened)
-- Polls gateway every 60 seconds
-- Tap to open bottom sheet → automatically marks all as read
-- "Clear all" button to dismiss all notifications
+- Bell icon with red badge showing unread count (capped at 9+; clears when panel is opened)
+- Tapping the bell opens a bottom sheet and automatically marks all as read (`POST /notifications/read`)
+- "Clear all" button dismisses all notifications
+- Timestamps shown right-aligned in each row: "now" (<1 min), "5m" (<1 h), "2h" (<24 h), "3d" (<7 d), "8.6." (older)
 - Receives: download complete, quality alerts, new episodes found, download failures
+- **In-app system notifications** — two Android notification channels:
+  - `nas_downloads`: fires when a torrent completes (works in foreground + background)
+  - `nas_alerts`: fires for gateway alerts (health, quality, new episodes) detected on each 60 s poll
+  - Only genuinely new notifications trigger system alerts (baseline is set silently on first launch poll)
+  - Up to 3 new notifications are surfaced per poll cycle
+- **Background notifications (WorkManager)** — periodic ~15-min task runs even when the app is fully killed:
+  - Polls `/notifications` using raw HTTP (no Dio dependency in the isolate)
+  - Re-authenticates automatically if the JWT is expired (uses stored remember-me credentials)
+  - Fires system bar notifications for any new items found
 
 ### Admin Features (admins group only)
 | Feature | Access |
@@ -83,7 +92,7 @@ Complete list of everything the app and gateway can do.
 | Pause / Resume all | One-tap pause or resume all torrents |
 | User Management | Create, edit, delete users; set admin role; superadmins also see an "AI access" toggle |
 | Speed Test | Ookla speedtest (~30 s); shows download, upload, ping, ISP, server |
-| Health Check | Shows disk/DB health report; manual re-run button; color-coded issues/warnings |
+| Health Check | Shows disk/DB health report; manual re-run button; color-coded issues/warnings; stalled cards show an amber **"N items"** badge and the AI Fix button becomes **"AI Fix (N)"** when multiple episodes of the same show are grouped |
 | Check New Episodes | Manual trigger for the daily new-episode scan (all users) |
 
 ### Superadmin Features (ai_access flag only)
@@ -96,10 +105,26 @@ Complete list of everything the app and gateway can do.
 | Send message | Full Ollama tool-calling loop; push notification sent on LLM reply |
 | Grant AI access | Only a superadmin can toggle AI access for another user |
 
+### Help / Connect Screen
+Accessible via the **?** icon in the AppBar (visible from the main tabs). Step-by-step guides for connecting any device to Jellyfin.
+
+**Home Network tab** — uses local IP:
+- Smart TV (Samsung, LG): App Store → search "Jellyfin" → Add server → local address
+- Phone / tablet (Android, iOS): install Jellyfin → Add server → local address
+- Browser: open local address directly
+
+**Anywhere tab** — uses Cloudflare Tunnel (or Tailscale):
+- Tailscale setup guide with download links (Android, iOS, desktop)
+- Same TV / phone / browser steps with tunnel URL instead
+- Cloudflare Tunnel address card displayed
+
+Both tabs include a **Jellyfin app download card** with direct links to Google Play (Android) and the App Store (iOS).
+
 ### UI / UX
 - Dark mode by default, toggle in hamburger menu
 - Czech / English language toggle in AppBar
 - Theme preference persisted across sessions
+- **Error + Retry**: Downloads and Library screens show an inline error message with a Retry button if the gateway fetch fails
 
 ---
 
@@ -119,6 +144,10 @@ Complete list of everything the app and gateway can do.
 | GET | `/diskspace` | user | Free/total disk space |
 | GET | `/plex/sessions` | admin | Active Plex streams (legacy, kept for compatibility) |
 | DELETE | `/plex/sessions/{key}` | admin | Kill a Plex session (legacy) |
+| DELETE | `/downloads/{hash}` | user | Cancel torrent + remove partial files, clean Radarr/Sonarr queue |
+| POST | `/grab/swap` | user | Blocklist a stalled torrent and grab the next-best alternative |
+| POST | `/health/resolve` | admin | AI auto-fix a stalled or broken item (Ollama tool-calling loop) |
+| POST | `/notifications/read` | user | Mark all notifications as read |
 | GET | `/sessions` | admin | Active streams from Plex + Jellyfin; each item has `source: "plex"\|"jellyfin"` |
 | DELETE | `/sessions/{source}/{key}` | admin | Kill a session on plex or jellyfin |
 | GET | `/qbt/limits` | admin | Current speed limits |
