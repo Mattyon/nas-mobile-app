@@ -667,6 +667,7 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
   String _type = 'movie';
   final TextEditingController _q = TextEditingController();
   List<dynamic> _items = <dynamic>[];
+  Map<String, dynamic> _disk = <String, dynamic>{};
 
   @override
   void initState() {
@@ -677,8 +678,57 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
   Future<void> _refresh() async {
     try {
       final List<dynamic> r = await Api.I.library(_type, _q.text.trim());
-      if (mounted) setState(() => _items = r);
+      Map<String, dynamic> disk = _disk;
+      try {
+        disk = await Api.I.diskspace();
+      } catch (_) {}
+      if (mounted) {
+        setState(() {
+          _items = r;
+          _disk = disk;
+        });
+      }
     } catch (_) {}
+  }
+
+  String _freeStr(double gb) {
+    if (gb >= 1000) return '${(gb / 1000).toStringAsFixed(2)} TB';
+    if (gb >= 1) return '${gb.toStringAsFixed(0)} GB';
+    return '${(gb * 1000).toStringAsFixed(0)} MB';
+  }
+
+  Color _diskColor(double pct) {
+    if (pct > 85) return Colors.red;
+    if (pct > 80) return Colors.orange;
+    if (pct > 70) return Colors.yellow.shade700;
+    return Colors.green;
+  }
+
+  Widget _diskBar() {
+    final double pct = (_disk['used_pct'] as num?)?.toDouble() ?? 0;
+    final double free = (_disk['free_gb'] as num?)?.toDouble() ?? 0;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: <Widget>[
+              Text('${pct.toStringAsFixed(0)}% of storage used',
+                  style: const TextStyle(fontSize: 12)),
+              Text('${_freeStr(free)} free', style: const TextStyle(fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+                value: pct / 100, minHeight: 6, color: _diskColor(pct)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _delete(Map<String, dynamic> m) async {
@@ -739,6 +789,11 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
               itemBuilder: (BuildContext context, int i) {
                 final Map<String, dynamic> m = _items[i] as Map<String, dynamic>;
                 final bool hasFile = m['hasFile'] == true;
+                final double sizeGb = (m['size_gb'] as num?)?.toDouble() ?? 0;
+                final String yearSize = <String>[
+                  m['year']?.toString() ?? '',
+                  if (sizeGb > 0) '${sizeGb.toStringAsFixed(1)} GB',
+                ].where((String s) => s.isNotEmpty).join('  •  ');
                 return ListTile(
                   leading: PosterImage(m['poster'] as String?),
                   title: Text(m['title']?.toString() ?? ''),
@@ -747,7 +802,7 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
                       Icon(hasFile ? Icons.check_circle : Icons.hourglass_empty,
                           size: 14, color: hasFile ? Colors.green : Colors.grey),
                       const SizedBox(width: 4),
-                      Text(m['year']?.toString() ?? ''),
+                      Text(yearSize),
                     ],
                   ),
                   trailing: Api.I.isAdmin
@@ -761,6 +816,7 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
             ),
           ),
         ),
+        if (((_disk['total_gb'] as num?) ?? 0) > 0) _diskBar(),
       ],
     );
   }
