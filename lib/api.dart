@@ -407,6 +407,10 @@ class Api {
     await _dio.post<dynamic>('/notifications/clear');
   }
 
+  Future<void> cancelDownload(String hash) async {
+    await _dio.delete<dynamic>('/downloads/$hash');
+  }
+
   Future<void> triggerNewEpisodeCheck() async {
     await _dio.post<dynamic>('/cron/new-episodes');
   }
