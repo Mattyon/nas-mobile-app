@@ -340,8 +340,6 @@ class Api {
     await _dio.delete<dynamic>('/users/$username');
   }
 
-  /// Extracts the human-readable detail string from a DioException response.
-  /// Returns empty string for non-Dio errors or when no detail field is present.
   static String errorDetail(Object e) {
     if (e is DioException) {
       final dynamic detail =
@@ -351,72 +349,6 @@ class Api {
     return '';
   }
 
-  // ---- AI chat history -------------------------------------------------------
-
-  Future<List<dynamic>> listChats() async {
-    final r = await _dio.get<Map<String, dynamic>>('/ai/chats');
-    return r.data!['chats'] as List<dynamic>;
-  }
-
-  Future<Map<String, dynamic>> createChat({String title = 'New chat'}) async {
-    final r = await _dio.post<Map<String, dynamic>>('/ai/chats',
-        data: <String, dynamic>{'title': title});
-    return r.data!;
-  }
-
-  Future<Map<String, dynamic>> getChat(String chatId) async {
-    final r = await _dio.get<Map<String, dynamic>>('/ai/chats/$chatId');
-    return r.data!;
-  }
-
-  Future<Map<String, dynamic>> sendChatMessage(
-      String chatId, String content) async {
-    final r = await _dio.post<Map<String, dynamic>>(
-      '/ai/chats/$chatId/message',
-      // active:true tells the gateway the chat screen is open → skip push + unread flag
-      data: <String, dynamic>{'content': content, 'active': true},
-      options: Options(receiveTimeout: const Duration(minutes: 3)),
-    );
-    return r.data!;
-  }
-
-  Future<void> renameChat(String chatId, String title) async {
-    await _dio.patch<dynamic>('/ai/chats/$chatId',
-        data: <String, dynamic>{'title': title});
-  }
-
-  Future<void> deleteChat(String chatId) async {
-    await _dio.delete<dynamic>('/ai/chats/$chatId');
-  }
-
-  Future<Map<String, dynamic>> speedtest() async {
-    final r = await _dio.get<Map<String, dynamic>>(
-      '/speedtest',
-      options: Options(receiveTimeout: const Duration(seconds: 90)),
-    );
-    return r.data ?? <String, dynamic>{};
-  }
-
-  Future<Map<String, dynamic>> notifications() async {
-    final r = await _dio.get<Map<String, dynamic>>('/notifications');
-    return r.data ?? <String, dynamic>{};
-  }
-
-  Future<void> markNotificationsRead() async {
-    await _dio.post<dynamic>('/notifications/read');
-  }
-
-  Future<void> clearNotifications() async {
-    await _dio.post<dynamic>('/notifications/clear');
-  }
-
-  Future<void> cancelDownload(String hash) async {
-    await _dio.delete<dynamic>('/downloads/$hash');
-  }
-
-  Future<void> triggerNewEpisodeCheck() async {
-    await _dio.post<dynamic>('/cron/new-episodes');
-  }
 
   Future<Map<String, dynamic>> healthReport() async {
     final r = await _dio.get<Map<String, dynamic>>('/health/report');
@@ -449,57 +381,11 @@ class Api {
     return r.data ?? <String, dynamic>{};
   }
 
-  Future<Map<String, dynamic>> itemDetail({
-    required String type,
-    int tmdbId = 0,
-    int tvdbId = 0,
-  }) async {
-    final r = await _dio.get<Map<String, dynamic>>('/detail',
-        queryParameters: <String, dynamic>{
-          'type': type,
-          'tmdb_id': tmdbId,
-          'tvdb_id': tvdbId,
-        });
-    return r.data ?? <String, dynamic>{};
-  }
-
   Future<Map<String, dynamic>> healthResolve(Map<String, dynamic> item) async {
     final r = await _dio.post<Map<String, dynamic>>(
       '/health/resolve',
       data: <String, dynamic>{'item': item},
       options: Options(receiveTimeout: const Duration(minutes: 2)),
-    );
-    return r.data ?? <String, dynamic>{};
-  }
-
-  Future<Map<String, dynamic>> tmdbMovieDetails(int tmdbId,
-      {String language = 'en-US'}) async {
-    final r = await _tmdbDio.get<Map<String, dynamic>>(
-      '/3/movie/$tmdbId',
-      queryParameters: <String, dynamic>{
-        'append_to_response': 'credits',
-        'language': language,
-      },
-      options: Options(
-          headers: <String, String>{
-            'Authorization': 'Bearer $kTmdbReadAccessToken',
-          }),
-    );
-    return r.data ?? <String, dynamic>{};
-  }
-
-  Future<Map<String, dynamic>> tmdbTvDetails(int tmdbId,
-      {String language = 'en-US'}) async {
-    final r = await _tmdbDio.get<Map<String, dynamic>>(
-      '/3/tv/$tmdbId',
-      queryParameters: <String, dynamic>{
-        'append_to_response': 'credits',
-        'language': language,
-      },
-      options: Options(
-          headers: <String, String>{
-            'Authorization': 'Bearer $kTmdbReadAccessToken',
-          }),
     );
     return r.data ?? <String, dynamic>{};
   }
