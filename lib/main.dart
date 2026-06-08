@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
@@ -52,6 +53,7 @@ Future<void> _notifyDownloadDone(String name) async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   await Api.I.init();
   if (Platform.isAndroid) await _initNotifications();
   final prefs = await SharedPreferences.getInstance();
@@ -413,6 +415,7 @@ class _LoginScreenState extends State<LoginScreen> with LangAware {
               ],
               TextField(
                 controller: _url,
+                readOnly: true,
                 decoration: InputDecoration(labelText: tr('serverUrl')),
               ),
               const SizedBox(height: 12),
@@ -1734,8 +1737,9 @@ class _LocalTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme cs = Theme.of(context).colorScheme;
+    final double bottomPad = MediaQuery.of(context).viewPadding.bottom + 24;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPad),
       children: <Widget>[
         _AddressCard(
           address: 'http://192.168.50.141:8096',
@@ -1762,65 +1766,18 @@ class _LocalTab extends StatelessWidget {
 }
 
 class _RemoteTab extends StatelessWidget {
-  Future<void> _open(String url) async {
-    final Uri uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
-
   @override
   Widget build(BuildContext context) {
     final ColorScheme cs = Theme.of(context).colorScheme;
+    final double bottomPad = MediaQuery.of(context).viewPadding.bottom + 24;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPad),
       children: <Widget>[
         _AddressCard(
-          address: 'http://100.91.166.12:8096',
-          icon: Icons.vpn_lock_outlined,
+          address: 'https://jellyfin.mattyzem.com',
+          icon: Icons.public,
           color: cs.tertiaryContainer,
           onColor: cs.onTertiaryContainer,
-        ),
-        const SizedBox(height: 16),
-        _HelpSection(icon: Icons.vpn_key_outlined, title: tr('helpTailscaleTitle'), steps: <String>[
-          tr('helpTailscaleStep1'), tr('helpTailscaleStep2'),
-          tr('helpTailscaleStep3'), tr('helpTailscaleStep4'), tr('helpTailscaleStep5'),
-        ]),
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Row(children: <Widget>[
-                  const Icon(Icons.download_outlined, size: 20),
-                  const SizedBox(width: 8),
-                  Text(tr('helpTailscaleDownload'),
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                ]),
-                const SizedBox(height: 10),
-                _LinkRow(
-                  icon: Icons.android,
-                  label: tr('helpTailscaleAndroid'),
-                  url: 'https://play.google.com/store/apps/details?id=com.tailscale.ipn',
-                  onTap: _open,
-                ),
-                const SizedBox(height: 8),
-                _LinkRow(
-                  icon: Icons.phone_iphone,
-                  label: tr('helpTailscaleIos'),
-                  url: 'https://apps.apple.com/app/tailscale/id1470499037',
-                  onTap: _open,
-                ),
-                const SizedBox(height: 8),
-                _LinkRow(
-                  icon: Icons.computer,
-                  label: tr('helpTailscaleDesktop'),
-                  url: 'https://tailscale.com/download',
-                  onTap: _open,
-                ),
-              ],
-            ),
-          ),
         ),
         const SizedBox(height: 12),
         _HelpSection(icon: Icons.tv, title: tr('helpTvTitle'), steps: <String>[
@@ -2012,6 +1969,7 @@ class _SessionsScreenState extends State<SessionsScreen> with LangAware {
               : RefreshIndicator(
                   onRefresh: _refresh,
                   child: ListView.builder(
+                    padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewPadding.bottom + 16),
                     itemCount: _sessions.length,
                     itemBuilder: (BuildContext context, int i) {
                       final Map<String, dynamic> s = _sessions[i] as Map<String, dynamic>;
@@ -2281,6 +2239,7 @@ class _UsersScreenState extends State<UsersScreen> with LangAware {
               : RefreshIndicator(
                   onRefresh: _refresh,
                   child: ListView.builder(
+                    padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewPadding.bottom + 16),
                     itemCount: _users.length,
                     itemBuilder: (BuildContext context, int i) {
                       final Map<String, dynamic> u = _users[i] as Map<String, dynamic>;
