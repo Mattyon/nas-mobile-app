@@ -220,6 +220,19 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                 }
               },
               itemBuilder: (BuildContext ctx) => <PopupMenuEntry<String>>[
+                PopupMenuItem<String>(
+                  enabled: false,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(Api.I.displayName ?? Api.I.username ?? '—',
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(Api.I.role,
+                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
+                ),
+                const PopupMenuDivider(),
                 if (Api.I.isAdmin)
                   PopupMenuItem<String>(
                     value: 'sessions',

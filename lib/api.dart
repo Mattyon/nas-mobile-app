@@ -11,15 +11,20 @@ class Api {
   late Dio _dio;
   String baseUrl = 'http://100.91.166.12:8000'; // tailnet IP of the NAS, gateway port
   String? token;
+  String? username;
+  String? displayName;
   List<String> groups = <String>[];
 
   bool get isLoggedIn => token != null;
   bool get isAdmin => groups.contains('admins');
+  String get role => isAdmin ? 'admin' : 'user';
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     baseUrl = prefs.getString('baseUrl') ?? baseUrl;
     groups = prefs.getStringList('groups') ?? <String>[];
+    username = prefs.getString('username');
+    displayName = prefs.getString('displayName');
     token = await _secure.read(key: 'token');
     _build();
   }
@@ -44,15 +49,22 @@ class Api {
     final r = await _dio.post<Map<String, dynamic>>('/login',
         data: <String, String>{'username': username, 'password': password});
     token = r.data!['token'] as String;
+    this.username = username; // field = the login name (param shadows the field)
+    final dynamic dn = r.data!['displayname'];
+    displayName = dn is String && dn.isNotEmpty ? dn : username;
     groups = List<String>.from(r.data!['groups'] as List<dynamic>? ?? <dynamic>[]);
     await _secure.write(key: 'token', value: token);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('groups', groups);
+    await prefs.setString('username', username);
+    await prefs.setString('displayName', displayName ?? username);
     _build();
   }
 
   Future<void> logout() async {
     token = null;
+    username = null;
+    displayName = null;
     groups = <String>[];
     await _secure.delete(key: 'token');
     _build();
