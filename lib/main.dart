@@ -538,13 +538,7 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                   PopupMenuButton<String>(
                 icon: const Icon(Icons.menu),
                 onSelected: (String v) async {
-                  if (v == 'ai') {
-                    Navigator.of(context).push(MaterialPageRoute<void>(
-                        builder: (_) => const AiChatScreen()));
-                  } else if (v == 'speedtest') {
-                    Navigator.of(context).push(MaterialPageRoute<void>(
-                        builder: (_) => const SpeedtestScreen()));
-                  } else if (v == 'neweps') {
+                  if (v == 'neweps') {
                     try {
                       await Api.I.triggerNewEpisodeCheck();
                       if (context.mounted) {
@@ -552,6 +546,15 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                             SnackBar(content: Text(tr('newEpsStarted'))));
                       }
                     } catch (_) {}
+                  } else if (v == 'health') {
+                    Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => const HealthCheckScreen()));
+                  } else if (v == 'speedtest') {
+                    Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => const SpeedtestScreen()));
+                  } else if (v == 'ai') {
+                    Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => const AiChatScreen()));
                   } else if (v == 'sessions') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const SessionsScreen()));
@@ -626,6 +629,15 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                         const Icon(Icons.network_check, size: 20),
                         const SizedBox(width: 12),
                         Text(tr('speedtest')),
+                      ]),
+                    ),
+                  if (Api.I.isAdmin)
+                    PopupMenuItem<String>(
+                      value: 'health',
+                      child: Row(children: <Widget>[
+                        const Icon(Icons.health_and_safety_outlined, size: 20),
+                        const SizedBox(width: 12),
+                        Text(tr('healthCheck')),
                       ]),
                     ),
                   PopupMenuItem<String>(
@@ -1243,8 +1255,6 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   };
   static const Set<String> _failedStates = <String>{'error', 'missingFiles'};
 
-  bool _isFailed(String s) => _failedStates.contains(s);
-
   static const Map<String, String> _stateLabel = <String, String>{
     'downloading': 'Downloading',
     'forcedDL': 'Downloading',
@@ -1266,6 +1276,8 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     'moving': 'Moving',
     'unknown': 'Unknown',
   };
+
+  bool _isFailed(String s) => _failedStates.contains(s);
 
   int _group(String s) {
     if (_activeStates.contains(s)) return 0; // active downloads
@@ -2284,4 +2296,401 @@ class _SpeedtestScreenState extends State<SpeedtestScreen> with LangAware {
       ),
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Health Check screen (admin-only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class HealthCheckScreen extends StatefulWidget {
+  const HealthCheckScreen({super.key});
+  @override
+  State<HealthCheckScreen> createState() => _HealthCheckScreenState();
+}
+
+class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
+  Map<String, dynamic>? _report;
+  bool _running = false;
+  String? _error;
+  String? _swapping; // key for in-progress swap: "${type}_${itemId}_${queueItemId}"
+  String? _resolving; // message-key of the item currently being AI-resolved
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final Map<String, dynamic> r = await Api.I.healthReport();
+      if (mounted) setState(() { _report = r; });
+    } catch (_) {}
+  }
+
+  Future<void> _run() async {
+    setState(() { _running = true; _error = null; });
+    try {
+      final Map<String, dynamic> r = await Api.I.triggerHealthCheck();
+      if (mounted) setState(() { _report = r; _running = false; });
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _running = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(children: <Widget>[
+          const Icon(Icons.health_and_safety_outlined, size: 20),
+          const SizedBox(width: 8),
+          Text(tr('healthCheck')),
+        ]),
+        actions: <Widget>[
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: tr('runHealthCheck'),
+            onPressed: _running ? null : _run,
+          ),
+        ],
+      ),
+      body: _running
+          ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(tr('healthCheckRunning')),
+            ]))
+          : _buildBody(theme),
+    );
+  }
+
+  Widget _buildBody(ThemeData theme) {
+    if (_error != null) {
+      return Center(child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(_error!, style: const TextStyle(color: Colors.redAccent),
+            textAlign: TextAlign.center),
+      ));
+    }
+
+    if (_report == null || _report!.isEmpty) {
+      return Center(child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+        const Icon(Icons.health_and_safety_outlined, size: 72, color: Colors.grey),
+        const SizedBox(height: 16),
+        Text(tr('healthCheckNever'), style: const TextStyle(color: Colors.grey)),
+        const SizedBox(height: 24),
+        FilledButton.icon(
+          onPressed: _run,
+          icon: const Icon(Icons.play_arrow),
+          label: Text(tr('runHealthCheck')),
+        ),
+      ]));
+    }
+
+    final List<dynamic> issues = (_report!['issues'] as List<dynamic>?) ?? <dynamic>[];
+    final List<dynamic> warnings = (_report!['warnings'] as List<dynamic>?) ?? <dynamic>[];
+    final String? lastRun = _report!['last_run'] as String?;
+    final num? durationSec = _report!['duration_sec'] as num?;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: <Widget>[
+        Row(children: <Widget>[
+          if (issues.isEmpty && warnings.isEmpty)
+            _chip(Icons.check_circle, tr('healthCheckOk'), Colors.green)
+          else if (issues.isNotEmpty) ...<Widget>[
+            _chip(Icons.error, '${issues.length} ${tr('healthCheckIssues')}',
+                Colors.redAccent),
+            if (warnings.isNotEmpty) const SizedBox(width: 8),
+          ],
+          if (warnings.isNotEmpty)
+            _chip(Icons.warning_amber, '${warnings.length} ${tr('healthCheckWarnings')}',
+                Colors.amber),
+        ]),
+        const SizedBox(height: 4),
+        if (lastRun != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              '${tr('healthCheckLastRun')}: ${_fmtTs(lastRun)}'
+              '${durationSec != null ? '  •  ${tr('healthCheckDuration')}: ${durationSec.toStringAsFixed(1)}s' : ''}',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ),
+
+        if (issues.isNotEmpty) ...<Widget>[
+          _sectionHeader(tr('healthCheckIssues'), theme, color: Colors.redAccent),
+          ...issues.map<Widget>((dynamic i) => _issueCard(i as Map<String, dynamic>)),
+        ],
+
+        if (warnings.isNotEmpty) ...<Widget>[
+          _sectionHeader(tr('healthCheckWarnings'), theme, color: Colors.amber),
+          ...warnings.map<Widget>((dynamic w) => _issueCard(w as Map<String, dynamic>, isWarning: true)),
+        ],
+
+        if (issues.isEmpty && warnings.isEmpty &&
+            ((_report!['sonarr_health'] as List<dynamic>?) ?? <dynamic>[]).isEmpty &&
+            ((_report!['radarr_health'] as List<dynamic>?) ?? <dynamic>[]).isEmpty)
+          Center(child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
+              const Icon(Icons.check_circle, color: Colors.green, size: 32),
+              const SizedBox(width: 12),
+              Text(tr('healthCheckOk'),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            ]),
+          )),
+
+        const SizedBox(height: 24),
+        FilledButton.tonal(
+          onPressed: _run,
+          child: Text(tr('runHealthCheck')),
+        ),
+      ],
+    );
+  }
+
+  Widget _chip(IconData icon, String label, Color color) {
+    return Chip(
+      avatar: Icon(icon, size: 16, color: color),
+      label: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+      backgroundColor: color.withValues(alpha: 0.12),
+      padding: EdgeInsets.zero,
+    );
+  }
+
+  Widget _sectionHeader(String title, ThemeData theme, {Color? color}) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16, bottom: 6),
+      child: Text(title,
+          style: theme.textTheme.titleSmall?.copyWith(
+            color: color ?? theme.colorScheme.onSurface,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+          )),
+    );
+  }
+
+  Future<void> _swap(
+      String type, int itemId, int queueItemId, Map<String, dynamic> alt) async {
+    final String key = '${type}_${itemId}_$queueItemId';
+    setState(() => _swapping = key);
+    try {
+      await Api.I.swapTorrent(
+        type: type,
+        itemId: itemId,
+        queueItemId: queueItemId,
+        guid: alt['guid'] as String,
+        indexerId: alt['indexer_id'] as int,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(tr('swapStarted'))));
+        await _load();
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(tr('error'))));
+      }
+    } finally {
+      if (mounted) setState(() => _swapping = null);
+    }
+  }
+
+  Future<void> _resolve(Map<String, dynamic> item) async {
+    final String key = item['message'] as String? ?? item.toString();
+    setState(() => _resolving = key);
+    try {
+      final Map<String, dynamic> result = await Api.I.healthResolve(item);
+      if (!mounted) return;
+      final bool ok = result['ok'] == true;
+      final String msg = result['message'] as String? ?? (ok ? 'Done.' : 'Could not resolve.');
+      await showDialog<void>(
+        context: context,
+        builder: (BuildContext ctx) => AlertDialog(
+          title: Text(tr(ok ? 'aiFixResult' : 'aiFixFailed')),
+          content: Text(msg),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(tr('ok')),
+            ),
+          ],
+        ),
+      );
+      if (ok && mounted) _run(); // re-run health check so the fixed warning disappears
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(tr('error'))));
+      }
+    } finally {
+      if (mounted) setState(() => _resolving = null);
+    }
+  }
+
+  Widget _issueCard(Map<String, dynamic> item, {bool isWarning = false}) {
+    final String category = item['category'] as String? ?? '';
+    if (category == 'stalled') return _stalledCard(item);
+
+    final Color color = isWarning ? Colors.amber : Colors.redAccent;
+    final String message = item['message'] as String? ?? '';
+    final bool canFix = category != 'check_error';
+    final bool isResolving = _resolving == message;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      color: color.withValues(alpha: 0.08),
+      child: ListTile(
+        leading: Icon(isWarning ? Icons.warning_amber : Icons.error_outline, color: color),
+        title: Text(_categoryLabel(category),
+            style: TextStyle(fontWeight: FontWeight.w600, color: color)),
+        subtitle: message.isNotEmpty
+            ? Text(message, style: const TextStyle(fontSize: 12))
+            : null,
+        trailing: canFix
+            ? (isResolving
+                ? const SizedBox(
+                    width: 20, height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : IconButton(
+                    icon: const Icon(Icons.auto_fix_high),
+                    tooltip: tr('aiFix'),
+                    onPressed: () => _resolve(item),
+                  ))
+            : null,
+      ),
+    );
+  }
+
+  Widget _stalledCard(Map<String, dynamic> item) {
+    final String message = item['message'] as String? ?? '';
+    final Map<String, dynamic>? alt = item['alternative'] as Map<String, dynamic>?;
+    final int? queueItemId = item['queue_item_id'] as int?;
+    final String? itemType = item['item_type'] as String?;
+    final int? itemId = item['item_id'] as int?;
+    final String swapKey = '${itemType}_${itemId}_$queueItemId';
+    final bool swapping = _swapping == swapKey;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      color: Colors.amber.withValues(alpha: 0.08),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(children: <Widget>[
+              const Icon(Icons.hourglass_disabled, color: Colors.amber, size: 18),
+              const SizedBox(width: 8),
+              Text(tr('healthCheckStalled'),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, color: Colors.amber)),
+            ]),
+            const SizedBox(height: 4),
+            Text(message, style: const TextStyle(fontSize: 12)),
+            const SizedBox(height: 8),
+            if (alt != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(children: <Widget>[
+                  const Icon(Icons.swap_horiz, color: Colors.green, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(alt['title'] as String? ?? '',
+                            style: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text(
+                          '${alt['indexer'] ?? ''} · '
+                          '${alt['seeders'] ?? 0} seeds · '
+                          '${alt['size_gb'] ?? 0} GB · '
+                          '${alt['resolution'] ?? 0}p',
+                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  swapping
+                      ? const SizedBox(
+                          height: 20, width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : FilledButton.tonal(
+                          style: FilledButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            textStyle: const TextStyle(fontSize: 12),
+                          ),
+                          onPressed: (itemType != null && itemId != null && queueItemId != null)
+                              ? () => _swap(itemType, itemId, queueItemId, alt)
+                              : null,
+                          child: Text(tr('swap')),
+                        ),
+                ]),
+              )
+            else
+              Text(tr('noAlternative'),
+                  style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: _resolving == message
+                  ? Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
+                      const SizedBox(
+                          width: 14, height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                      const SizedBox(width: 6),
+                      Text(tr('aiFixing'),
+                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    ])
+                  : TextButton.icon(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        textStyle: const TextStyle(fontSize: 12),
+                      ),
+                      onPressed: swapping ? null : () => _resolve(item),
+                      icon: const Icon(Icons.auto_fix_high, size: 15),
+                      label: Text(tr('aiFix')),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _categoryLabel(String category) {
+    switch (category) {
+      case 'missing_file':    return tr('healthCheckMissing');
+      case 'suspicious_size':
+      case 'small_file':      return tr('healthCheckSmall');
+      case 'not_imported':    return tr('healthCheckNotImported');
+      case 'torrent_error':   return tr('healthCheckQbtError');
+      case 'stalled':         return tr('healthCheckStalled');
+      case 'sonarr':          return tr('healthCheckSonarr');
+      case 'radarr':          return tr('healthCheckRadarr');
+      default:                return category;
+    }
+  }
+
+  String _fmtTs(String iso) {
+    try {
+      final DateTime dt = DateTime.parse(iso).toLocal();
+      return '${dt.year}-${_p(dt.month)}-${_p(dt.day)} ${_p(dt.hour)}:${_p(dt.minute)}';
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  String _p(int n) => n.toString().padLeft(2, '0');
 }
