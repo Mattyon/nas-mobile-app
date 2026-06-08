@@ -45,6 +45,10 @@ const Map<String, Map<String, String>> _strings = {
     'searchEmptyHint': 'Search a movie or show, then pick Fast, Balanced, or Best.',
     'plexSessions': 'Plex sessions',
     'noSessions': 'No one is watching right now',
+    'free': 'free',
+    'storageUsedSuffix': 'of storage used',
+    'transcode': 'transcode',
+    'direct': 'direct',
   },
   'cs': {
     'app': 'Mattyho NAS',
@@ -87,6 +91,10 @@ const Map<String, Map<String, String>> _strings = {
     'searchEmptyHint': 'Vyhledej film nebo seriál a vyber Rychle, Vyvážené nebo Nejlepší.',
     'plexSessions': 'Plex relace',
     'noSessions': 'Nikdo teď nic nesleduje',
+    'free': 'volných',
+    'storageUsedSuffix': 'úložiště využito',
+    'transcode': 'překódování',
+    'direct': 'přímo',
   },
 };
 

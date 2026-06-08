@@ -324,8 +324,10 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  Icon(Icons.movie_filter_outlined,
-                      size: 64, color: Colors.white.withValues(alpha: 0.4)),
+                  Opacity(
+                    opacity: 0.5,
+                    child: Image.asset('assets/icon/icon.png', width: 140, height: 140),
+                  ),
                   const SizedBox(height: 16),
                   Text(tr('searchEmptyTitle'),
                       style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
