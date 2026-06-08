@@ -289,6 +289,9 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                 if (v == 'sessions') {
                   Navigator.of(context).push(
                       MaterialPageRoute<void>(builder: (_) => const SessionsScreen()));
+                } else if (v == 'users') {
+                  Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => const UsersScreen()));
                 } else if (v == 'speed') {
                   _showSpeedDialog(context);
                 } else if (v == 'logout') {
@@ -326,6 +329,15 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                       const Icon(Icons.speed, size: 20),
                       const SizedBox(width: 12),
                       Text(tr('speedLimits')),
+                    ]),
+                  ),
+                if (Api.I.isAdmin)
+                  PopupMenuItem<String>(
+                    value: 'users',
+                    child: Row(children: <Widget>[
+                      const Icon(Icons.people, size: 20),
+                      const SizedBox(width: 12),
+                      Text(tr('userManagement')),
                     ]),
                   ),
                 PopupMenuItem<String>(
@@ -1057,3 +1069,214 @@ class _SessionsScreenState extends State<SessionsScreen> with LangAware {
   }
 }
 
+// ----------------------------- User management (admin) ----------------------
+class UsersScreen extends StatefulWidget {
+  const UsersScreen({super.key});
+  @override
+  State<UsersScreen> createState() => _UsersScreenState();
+}
+
+class _UsersScreenState extends State<UsersScreen> with LangAware {
+  List<dynamic> _users = <dynamic>[];
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final List<dynamic> u = await Api.I.listUsers();
+      if (mounted) setState(() { _users = u; _loaded = true; });
+    } catch (_) {
+      if (mounted) setState(() => _loaded = true);
+    }
+  }
+
+  Future<void> _openDialog({Map<String, dynamic>? existing}) async {
+    final bool isEdit = existing != null;
+    final TextEditingController nameCtrl =
+        TextEditingController(text: existing?['username']?.toString() ?? '');
+    final TextEditingController dispCtrl =
+        TextEditingController(text: existing?['displayname']?.toString() ?? '');
+    final TextEditingController passCtrl = TextEditingController();
+    bool isAdmin = (existing?['groups'] as List<dynamic>?)?.contains('admins') ?? false;
+    bool saving = false;
+    String? errorMsg;
+
+    final bool? saved = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => StatefulBuilder(
+        builder: (BuildContext ctx2, StateSetter ss) => AlertDialog(
+          title: Text(isEdit ? tr('editUser') : tr('addUser')),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                if (!isEdit)
+                  TextField(
+                      controller: nameCtrl,
+                      decoration: InputDecoration(labelText: tr('username')),
+                      onChanged: (_) { if (errorMsg != null) ss(() => errorMsg = null); }),
+                const SizedBox(height: 8),
+                TextField(
+                    controller: dispCtrl,
+                    decoration: InputDecoration(labelText: tr('displayName')),
+                    onChanged: (_) { if (errorMsg != null) ss(() => errorMsg = null); }),
+                const SizedBox(height: 8),
+                TextField(
+                    controller: passCtrl,
+                    decoration: InputDecoration(
+                        labelText: isEdit ? tr('newPassword') : tr('password')),
+                    obscureText: true,
+                    onChanged: (_) { if (errorMsg != null) ss(() => errorMsg = null); }),
+                const SizedBox(height: 8),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(tr('isAdmin')),
+                  value: isAdmin,
+                  onChanged: saving ? null : (bool? v) => ss(() => isAdmin = v ?? false),
+                ),
+                if (errorMsg != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      errorMsg!,
+                      style: TextStyle(
+                          color: Theme.of(ctx2).colorScheme.error, fontSize: 13),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: saving ? null : () => Navigator.of(ctx2).pop(false),
+              child: Text(tr('cancel')),
+            ),
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      ss(() => saving = true);
+                      try {
+                        if (isEdit) {
+                          await Api.I.updateUser(
+                            existing?['username']?.toString() ?? '',
+                            displayname: dispCtrl.text.trim(),
+                            password: passCtrl.text.isEmpty ? null : passCtrl.text,
+                            isAdmin: isAdmin,
+                          );
+                        } else {
+                          await Api.I.createUser(
+                            username: nameCtrl.text.trim(),
+                            password: passCtrl.text,
+                            displayname: dispCtrl.text.trim(),
+                            isAdmin: isAdmin,
+                          );
+                        }
+                        if (ctx2.mounted) Navigator.of(ctx2).pop(true);
+                      } catch (e) {
+                        final String detail = Api.errorDetail(e);
+                        final String msg = detail.isNotEmpty ? detail : tr('error');
+                        if (ctx2.mounted) ss(() { saving = false; errorMsg = msg; });
+                      }
+                    },
+              child: saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : Text(tr('save')),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (saved == true) await _refresh();
+  }
+
+  Future<void> _delete(Map<String, dynamic> u) async {
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: Text(tr('deleteUser')),
+        content: Text(u['username']?.toString() ?? ''),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false), child: Text(tr('cancel'))),
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true), child: Text(tr('delete'))),
+        ],
+      ),
+    );
+    if (ok == true) {
+      try {
+        await Api.I.deleteUser(u['username']?.toString() ?? '');
+        await _refresh();
+      } catch (_) {}
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(tr('userManagement'))),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _openDialog,
+        child: const Icon(Icons.person_add),
+      ),
+      body: !_loaded
+          ? const Center(child: CircularProgressIndicator())
+          : _users.isEmpty
+              ? Center(child: Text(tr('noUsers')))
+              : RefreshIndicator(
+                  onRefresh: _refresh,
+                  child: ListView.builder(
+                    itemCount: _users.length,
+                    itemBuilder: (BuildContext context, int i) {
+                      final Map<String, dynamic> u = _users[i] as Map<String, dynamic>;
+                      final bool admin =
+                          (u['groups'] as List<dynamic>?)?.contains('admins') ?? false;
+                      return ListTile(
+                        leading: CircleAvatar(
+                          child: Text((u['displayname']?.toString() ??
+                                  u['username']?.toString() ??
+                                  '?')
+                              .substring(0, 1)
+                              .toUpperCase()),
+                        ),
+                        title: Text(u['displayname']?.toString() ??
+                            u['username']?.toString() ??
+                            '?'),
+                        subtitle: Text(u['username']?.toString() ?? ''),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            if (admin)
+                              Chip(
+                                label: Text(tr('admin'),
+                                    style: const TextStyle(fontSize: 11)),
+                                padding: EdgeInsets.zero,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined),
+                              onPressed: () => _openDialog(existing: u),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () => _delete(u),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+    );
+  }
+}
