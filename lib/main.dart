@@ -1128,6 +1128,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   final TextEditingController _q = TextEditingController();
   Map<String, dynamic> _xfer = <String, dynamic>{};
   String? _error;
+  DateTime? _prioPausedUntil;
+  // hash → group number from the previous poll; populated after first fetch.
+  Map<String, int>? _prevGroups;
 
   @override
   void initState() {
@@ -1154,6 +1157,37 @@ class _DownloadsScreenState extends State<DownloadsScreen>
         x = await Api.I.transfer();
       } catch (_) {}
       if (!mounted) return;
+      if (_prioPausedUntil != null && DateTime.now().isBefore(_prioPausedUntil!)) {
+        // Priority change in flight — skip overwriting items so the optimistic
+        // order is visible until qBittorrent has processed the reorder.
+        setState(() { _xfer = x; _error = null; });
+        return;
+      }
+
+      // Build current group snapshot and fire completion notifications.
+      final Map<String, int> curr = <String, int>{};
+      for (final dynamic raw in d) {
+        final Map<String, dynamic> t = raw as Map<String, dynamic>;
+        final String? hash = t['hash']?.toString();
+        if (hash == null) continue;
+        curr[hash] = _group(t['state']?.toString() ?? '');
+      }
+      if (_prevGroups != null) {
+        // Fire once per torrent that crossed from active/queued (0-1) → done (2).
+        for (final MapEntry<String, int> entry in curr.entries) {
+          final int? prev = _prevGroups![entry.key];
+          if (prev != null && prev <= 1 && entry.value == 2) {
+            final Map<String, dynamic>? t = d
+                .cast<Map<String, dynamic>>()
+                .where((Map<String, dynamic> e) => e['hash'] == entry.key)
+                .firstOrNull;
+            final String name = t?['name']?.toString() ?? 'Download';
+            _notifyDownloadDone(name);
+          }
+        }
+      }
+      _prevGroups = curr;
+
       setState(() {
         _items = d;
         _xfer = x;
@@ -1187,6 +1221,28 @@ class _DownloadsScreenState extends State<DownloadsScreen>
 
   bool _isFailed(String s) => _failedStates.contains(s);
 
+  static const Map<String, String> _stateLabel = <String, String>{
+    'downloading': 'Downloading',
+    'forcedDL': 'Downloading',
+    'stalledDL': 'Stalled — no peers',
+    'metaDL': 'Fetching metadata',
+    'checkingDL': 'Checking',
+    'allocating': 'Allocating',
+    'queuedDL': 'Queued',
+    'pausedDL': 'Paused',
+    'stoppedDL': 'Stopped',
+    'uploading': 'Seeding',
+    'forcedUP': 'Seeding',
+    'stalledUP': 'Seeding (stalled)',
+    'checkingUP': 'Checking',
+    'pausedUP': 'Paused',
+    'stoppedUP': 'Stopped',
+    'error': 'Error',
+    'missingFiles': 'Missing files',
+    'moving': 'Moving',
+    'unknown': 'Unknown',
+  };
+
   int _group(String s) {
     if (_activeStates.contains(s)) return 0; // active downloads
     if (s == 'queuedDL') return 1;           // queued
@@ -1194,7 +1250,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     return 2;                                // finished / seeding / paused / stopped
   }
 
-  // active=true → downloading+queued; active=false → finished+failed. Filtered by search.
+  // active=true -> downloading+queued; active=false -> finished+failed. Filtered by search.
   List<Map<String, dynamic>> _filtered(bool active) {
     final String ql = _q.text.trim().toLowerCase();
     final List<Map<String, dynamic>> items = _items
@@ -1210,19 +1266,25 @@ class _DownloadsScreenState extends State<DownloadsScreen>
       final int gb = _group(b['state']?.toString() ?? '');
       if (ga != gb) return ga.compareTo(gb);
       if (ga == 0) {
-        return ((b['progress'] as num?)?.toDouble() ?? 0)
-            .compareTo((a['progress'] as num?)?.toDouble() ?? 0);
+        // Sort by qBittorrent priority (lower number = higher queue position).
+        // Priority 0 means no queue limit — treat as lowest (sort to end).
+        final int pa = (a['priority'] as num?)?.toInt() ?? 0;
+        final int pb = (b['priority'] as num?)?.toInt() ?? 0;
+        final int ea = pa == 0 ? 999999 : pa;
+        final int eb = pb == 0 ? 999999 : pb;
+        return ea.compareTo(eb);
       }
       return 0;
     });
     return items;
   }
 
-  Widget _tile(Map<String, dynamic> t) {
+  Widget _tile(Map<String, dynamic> t, {Key? key, int? dragIndex}) {
     final double pct = (t['progress'] as num?)?.toDouble() ?? 0;
     final bool failed = _isFailed(t['state']?.toString() ?? '');
     final TextStyle? red = failed ? const TextStyle(color: Colors.redAccent) : null;
     return ListTile(
+      key: key,
       title: Text(t['name']?.toString() ?? '',
           maxLines: 1, overflow: TextOverflow.ellipsis, style: red),
       subtitle: Column(
@@ -1231,19 +1293,55 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           const SizedBox(height: 4),
           LinearProgressIndicator(value: pct / 100, color: failed ? Colors.redAccent : null),
           const SizedBox(height: 4),
-          Text('${pct.toStringAsFixed(1)}%  •  ${t['dlspeed_mbps'] ?? 0} Mbit/s  •  '
-              'ETA ${_eta(t['eta_sec'])}  •  ${t['state'] ?? ''}', style: red),
+          Text('${pct.toStringAsFixed(1)}%  •  ${t['dlspeed_mbs'] ?? 0} MB/s  •  '
+              'ETA ${_eta(t['eta_sec'])}  •  '
+              '${_stateLabel[t['state']?.toString()] ?? t['state'] ?? ''}', style: red),
         ],
       ),
+      trailing: dragIndex != null
+          ? ReorderableDragStartListener(
+              index: dragIndex,
+              child: const Icon(Icons.drag_handle, color: Colors.grey),
+            )
+          : null,
     );
   }
 
-  Widget _list(List<Map<String, dynamic>> items) {
+  Future<void> _onReorder(List<Map<String, dynamic>> sorted, int oldIndex, int newIndex) async {
+    if (newIndex == oldIndex) return;
+    final String? hash = sorted[oldIndex]['hash']?.toString();
+    if (hash == null) return;
+    setState(() {
+      final Map<String, dynamic> item = sorted.removeAt(oldIndex);
+      sorted.insert(newIndex, item);
+      for (int i = 0; i < sorted.length; i++) {
+        sorted[i]['priority'] = i + 1;
+      }
+      _prioPausedUntil = DateTime.now().add(const Duration(seconds: 5));
+    });
+    try {
+      await Api.I.reorderTorrent(hash, oldIndex, newIndex);
+    } catch (_) {}
+  }
+
+  Widget _list(List<Map<String, dynamic>> items, {bool reorderable = false}) {
     if (items.isEmpty) {
       return ListView(children: <Widget>[
         const SizedBox(height: 120),
         Center(child: Text(tr('noResults'))),
       ]);
+    }
+    if (reorderable) {
+      return ReorderableListView.builder(
+        buildDefaultDragHandles: false,
+        onReorderItem: (int oldIndex, int newIndex) => _onReorder(items, oldIndex, newIndex),
+        itemCount: items.length,
+        itemBuilder: (BuildContext context, int i) => _tile(
+          items[i],
+          key: ValueKey(items[i]['hash'] ?? i.toString()),
+          dragIndex: i,
+        ),
+      );
     }
     return ListView.builder(
       itemCount: items.length,
@@ -1265,7 +1363,8 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           child: TextField(
             controller: _q,
             decoration: InputDecoration(
-                isDense: true, hintText: tr('search'), prefixIcon: const Icon(Icons.search)),
+                hintText: tr('search'), prefixIcon: const Icon(Icons.search),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14)),
           ),
         ),
         TabBar(
@@ -1279,7 +1378,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           child: TabBarView(
             controller: _tabs,
             children: <Widget>[
-              RefreshIndicator(onRefresh: _refresh, child: _list(active)),
+              _list(active, reorderable: true),
               RefreshIndicator(onRefresh: _refresh, child: _list(finished)),
             ],
           ),
@@ -1290,8 +1389,8 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   }
 
   Widget _speedBar() {
-    final num dl = (_xfer['dl_mbps'] as num?) ?? 0;
-    final num up = (_xfer['up_mbps'] as num?) ?? 0;
+    final num dl = (_xfer['dl_mbs'] as num?) ?? 0;
+    final num up = (_xfer['up_mbs'] as num?) ?? 0;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
       child: Row(
@@ -1300,12 +1399,12 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           Row(children: <Widget>[
             const Icon(Icons.south, size: 16, color: Colors.lightBlueAccent),
             const SizedBox(width: 4),
-            Text('$dl Mbit/s'),
+            Text('$dl MB/s'),
           ]),
           Row(children: <Widget>[
             const Icon(Icons.north, size: 16, color: Colors.greenAccent),
             const SizedBox(width: 4),
-            Text('$up Mbit/s'),
+            Text('$up MB/s'),
           ]),
         ],
       ),
