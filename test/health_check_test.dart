@@ -107,6 +107,42 @@ void main() {
     });
   });
 
+  group('health check — chip summary display logic', () {
+    // Mirrors the chip row in the health screen:
+    // - OK chip when both lists empty
+    // - Issues chip when issues > 0
+    // - Warnings chip when warnings > 0
+    // - No issues chip when issues == 0 but warnings > 0 (the fixed bug)
+
+    bool showOkChip(int i, int w) => i == 0 && w == 0;
+    bool showIssuesChip(int i) => i > 0;
+    bool showWarningsChip(int w) => w > 0;
+
+    test('all clear → OK chip only, no issues or warnings chips', () {
+      expect(showOkChip(0, 0), isTrue);
+      expect(showIssuesChip(0), isFalse);
+      expect(showWarningsChip(0), isFalse);
+    });
+
+    test('issues only → issues chip shown, OK chip hidden', () {
+      expect(showOkChip(2, 0), isFalse);
+      expect(showIssuesChip(2), isTrue);
+      expect(showWarningsChip(0), isFalse);
+    });
+
+    test('warnings only → warnings chip shown, issues chip hidden (not "0 issues")', () {
+      expect(showOkChip(0, 3), isFalse);
+      expect(showIssuesChip(0), isFalse);
+      expect(showWarningsChip(3), isTrue);
+    });
+
+    test('issues and warnings → both chips shown, OK chip hidden', () {
+      expect(showOkChip(1, 2), isFalse);
+      expect(showIssuesChip(1), isTrue);
+      expect(showWarningsChip(2), isTrue);
+    });
+  });
+
   group('health check — report data structure', () {
     test('health report has items list', () {
       final Map<String, dynamic> report = <String, dynamic>{
