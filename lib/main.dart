@@ -605,7 +605,7 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                       child: Row(children: <Widget>[
                         const Icon(Icons.cast_connected, size: 20),
                         const SizedBox(width: 12),
-                        Text(tr('plexSessions')),
+                        Text(tr('mediaSessions')),
                       ]),
                     ),
                   if (Api.I.isAdmin)
@@ -1710,7 +1710,7 @@ class _SessionsScreenState extends State<SessionsScreen> with LangAware {
 
   Future<void> _refresh() async {
     try {
-      final List<dynamic> s = await Api.I.plexSessions();
+      final List<dynamic> s = await Api.I.sessions();
       if (mounted) {
         setState(() {
           _sessions = s;
@@ -1734,9 +1734,9 @@ class _SessionsScreenState extends State<SessionsScreen> with LangAware {
     return '${diffSec ~/ 86400}d ago';
   }
 
-  Future<void> _terminate(String sessionKey) async {
+  Future<void> _terminate(String source, String sessionKey) async {
     try {
-      await Api.I.terminatePlexSession(sessionKey);
+      await Api.I.terminateSession(source, sessionKey);
       await _refresh();
     } catch (_) {}
   }
@@ -1744,7 +1744,7 @@ class _SessionsScreenState extends State<SessionsScreen> with LangAware {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(tr('plexSessions'))),
+      appBar: AppBar(title: Text(tr('mediaSessions'))),
       body: !_loaded
           ? const Center(child: CircularProgressIndicator())
           : _sessions.isEmpty
@@ -1765,6 +1765,8 @@ class _SessionsScreenState extends State<SessionsScreen> with LangAware {
                       final bool stale = lastViewedAt > 0 &&
                           (DateTime.now().millisecondsSinceEpoch ~/ 1000 - lastViewedAt) > 300;
                       final String? sessionKey = s['session_key']?.toString();
+                      final String source = (s['source'] ?? 'plex').toString();
+                      final bool isPlex = source == 'plex';
                       return ListTile(
                         leading: Icon(playing ? Icons.play_circle : Icons.pause_circle,
                             color: stale
@@ -1778,9 +1780,23 @@ class _SessionsScreenState extends State<SessionsScreen> with LangAware {
                               child: Text('${s['user'] ?? '?'} — ${s['title'] ?? ''}',
                                   maxLines: 2, overflow: TextOverflow.ellipsis),
                             ),
+                            Container(
+                              margin: const EdgeInsets.only(left: 6),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                  color: (isPlex ? Colors.orange : Colors.purple)
+                                      .withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(4)),
+                              child: Text(isPlex ? 'PLEX' : 'JELLYFIN',
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: isPlex ? Colors.orange : Colors.purple)),
+                            ),
                             if (stale)
                               Container(
-                                margin: const EdgeInsets.only(left: 6),
+                                margin: const EdgeInsets.only(left: 4),
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
@@ -1788,7 +1804,7 @@ class _SessionsScreenState extends State<SessionsScreen> with LangAware {
                                     borderRadius: BorderRadius.circular(4)),
                                 child: Text('stale',
                                     style: const TextStyle(
-                                        fontSize: 11, color: Colors.orange)),
+                                        fontSize: 10, color: Colors.orange)),
                               ),
                           ],
                         ),
@@ -1817,7 +1833,7 @@ class _SessionsScreenState extends State<SessionsScreen> with LangAware {
                                 icon: const Icon(Icons.cancel_outlined,
                                     color: Colors.redAccent),
                                 tooltip: 'Terminate session',
-                                onPressed: () => _terminate(sessionKey),
+                                onPressed: () => _terminate(source, sessionKey),
                               )
                             : null,
                       );

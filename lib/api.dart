@@ -258,8 +258,8 @@ class Api {
     return r.data!['sessions'] as List<dynamic>;
   }
 
-  Future<void> terminatePlexSession(String sessionKey) async {
-    await _dio.delete<dynamic>('/plex/sessions/$sessionKey');
+  Future<void> terminateSession(String source, String sessionKey) async {
+    await _dio.delete<dynamic>('/sessions/$source/$sessionKey');
   }
 
   Future<Map<String, dynamic>> qbtLimits() async {
