@@ -2441,7 +2441,7 @@ class _UsersScreenState extends State<UsersScreen> with LangAware {
           ),
           actions: <Widget>[
             TextButton(
-              onPressed: saving ? null : () => Navigator.of(ctx2).pop(false),
+              onPressed: () => Navigator.of(ctx2).pop(false),
               child: Text(tr('cancel')),
             ),
             FilledButton(
@@ -2507,7 +2507,14 @@ class _UsersScreenState extends State<UsersScreen> with LangAware {
       try {
         await Api.I.deleteUser(u['username']?.toString() ?? '');
         await _refresh();
-      } catch (_) {}
+      } catch (e) {
+        final String msg = Api.errorDetail(e);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg.isNotEmpty ? msg : tr('error'))),
+          );
+        }
+      }
     }
   }
 
@@ -3163,7 +3170,7 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
       ));
     }
 
-    if (_report == null || _report!.isEmpty) {
+    if (_report == null || !_report!.containsKey('checked_at')) {
       return Center(child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
         const Icon(Icons.health_and_safety_outlined, size: 72, color: Colors.grey),
         const SizedBox(height: 16),
@@ -3179,8 +3186,8 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
 
     final List<dynamic> issues = (_report!['issues'] as List<dynamic>?) ?? <dynamic>[];
     final List<dynamic> warnings = (_report!['warnings'] as List<dynamic>?) ?? <dynamic>[];
-    final String? lastRun = _report!['last_run'] as String?;
-    final num? durationSec = _report!['duration_sec'] as num?;
+    final String? lastRun = _report!['checked_at'] as String?;
+    final num? durationSec = _report!['duration_s'] as num?;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -3295,21 +3302,27 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
       final Map<String, dynamic> result = await Api.I.healthResolve(item);
       if (!mounted) return;
       final bool ok = result['ok'] == true;
-      final String msg = result['message'] as String? ?? (ok ? 'Done.' : 'Could not resolve.');
-      await showDialog<void>(
-        context: context,
-        builder: (BuildContext ctx) => AlertDialog(
-          title: Text(tr(ok ? 'aiFixResult' : 'aiFixFailed')),
-          content: Text(msg),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(tr('ok')),
-            ),
-          ],
-        ),
-      );
-      if (ok && mounted) _run(); // re-run health check so the fixed warning disappears
+      if (ok) {
+        // Stay in loading state and re-run health check — user sees the loader
+        // the whole time and only sees the updated report once the fix is confirmed.
+        await _run();
+      } else {
+        final String msg = result['message'] as String? ?? 'Could not resolve.';
+        setState(() => _resolving = null);
+        await showDialog<void>(
+          context: context,
+          builder: (BuildContext ctx) => AlertDialog(
+            title: Text(tr('aiFixFailed')),
+            content: Text(msg),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(tr('ok')),
+              ),
+            ],
+          ),
+        );
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -3357,10 +3370,13 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
     final String message = item['message'] as String? ?? '';
     final Map<String, dynamic>? alt = item['alternative'] as Map<String, dynamic>?;
     final int? queueItemId = item['queue_item_id'] as int?;
+    final List<dynamic> queueItemIds =
+        (item['queue_item_ids'] as List<dynamic>?) ?? <dynamic>[];
     final String? itemType = item['item_type'] as String?;
     final int? itemId = item['item_id'] as int?;
     final String swapKey = '${itemType}_${itemId}_$queueItemId';
     final bool swapping = _swapping == swapKey;
+    final int groupCount = queueItemIds.length > 1 ? queueItemIds.length : 0;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -3376,6 +3392,20 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
               Text(tr('healthCheckStalled'),
                   style: const TextStyle(
                       fontWeight: FontWeight.w600, color: Colors.amber)),
+              if (groupCount > 0) ...<Widget>[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text('$groupCount items',
+                      style: const TextStyle(
+                          fontSize: 10, fontWeight: FontWeight.w700,
+                          color: Colors.amber)),
+                ),
+              ],
             ]),
             const SizedBox(height: 4),
             Text(message, style: const TextStyle(fontSize: 12)),
@@ -3448,7 +3478,9 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
                       ),
                       onPressed: swapping ? null : () => _resolve(item),
                       icon: const Icon(Icons.auto_fix_high, size: 15),
-                      label: Text(tr('aiFix')),
+                      label: Text(groupCount > 0
+                          ? '${tr('aiFix')} ($groupCount)'
+                          : tr('aiFix')),
                     ),
             ),
           ],
