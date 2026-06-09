@@ -1536,6 +1536,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   static const Set<String> _activeStates = <String>{
     'downloading', 'forcedDL', 'metaDL', 'stalledDL', 'checkingDL', 'allocating'
   };
+  static const Set<String> _seedingStates = <String>{
+    'uploading', 'forcedUP', 'stalledUP'
+  };
   static const Set<String> _failedStates = <String>{'error', 'missingFiles'};
 
   static const Map<String, String> _stateLabel = <String, String>{
@@ -1628,6 +1631,19 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     _refresh();
   }
 
+  String _subtitleStats(Map<String, dynamic> t) {
+    final double pct = (t['progress'] as num?)?.toDouble() ?? 0;
+    final String state = t['state']?.toString() ?? '';
+    final String label = _stateLabel[state] ?? state;
+    if (_seedingStates.contains(state)) {
+      final num up = (t['upspeed_mbs'] as num?) ?? 0;
+      final num ratio = (t['ratio'] as num?) ?? 0;
+      return '${pct.toStringAsFixed(1)}%  •  ↑ $up MB/s  •  Ratio ${ratio.toStringAsFixed(2)}  •  $label';
+    }
+    return '${pct.toStringAsFixed(1)}%  •  ${t['dlspeed_mbs'] ?? 0} MB/s  •  '
+        'ETA ${_eta(t['eta_sec'])}  •  $label';
+  }
+
   Widget _tile(Map<String, dynamic> t,
       {Key? key, int? dragIndex, bool cancellable = false}) {
     final double pct = (t['progress'] as num?)?.toDouble() ?? 0;
@@ -1653,9 +1669,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           const SizedBox(height: 4),
           LinearProgressIndicator(value: pct / 100, color: failed ? Colors.redAccent : null),
           const SizedBox(height: 4),
-          Text('${pct.toStringAsFixed(1)}%  •  ${t['dlspeed_mbs'] ?? 0} MB/s  •  '
-              'ETA ${_eta(t['eta_sec'])}  •  '
-              '${_stateLabel[t['state']?.toString()] ?? t['state'] ?? ''}', style: red),
+          Text(_subtitleStats(t), style: red),
         ],
       ),
       trailing: dragIndex != null

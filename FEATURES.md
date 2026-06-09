@@ -12,16 +12,25 @@ Complete list of everything the app and gateway can do.
 - **Remember me** — stores credentials encrypted for 365 days (renewable on each use)
 - **Biometric login** — fingerprint / face unlock on app open (if device supports it)
 - Roles: `user` (read + download), `admin` (full access), **`superadmin`** (`ai_access: true` flag in YAML — only superadmins can grant this to others)
+- SharedPreferences keys persisted on login: `username` (login username), `displayName` (display name from API, falls back to username), `isSuperadmin` (bool from `is_superadmin` login response); all cleared on logout
 
 ### Search
-- Full-text search across movies and TV shows via Radarr/Sonarr lookup
-- Shows poster, year, overview, on-disk badge
+- Full-text search across movies and TV shows via Radarr/Sonarr lookup — returns both in a single unified list (no type toggle)
+- Each result tile shows a colored type badge: teal pill for Movie, purple pill for TV
+- Shows poster thumbnail, title, year, overview; tapping a tile opens the full Item Detail screen
 - **Czech localization** — Czech title displayed when app language is set to Čeština
   - Sources: Radarr/Sonarr `alternateTitles` → TMDb API → Wikidata SPARQL (no key needed)
   - Covers both TVDb-mapped and TMDb-mapped TV shows (e.g. HIMYM via P4983)
+  - Search re-runs automatically on language switch and passes `lang=cs` to the API
+- Per-language on-disk indicators: EN and CS flag chips on each tile show which language versions are in the library; when both are present, a green "In library" label replaces the download button
+- Download button shows a circular progress spinner and is disabled while the grab request is in-flight (prevents duplicate submissions)
 - Loading spinner shown while waiting for results (no blank/false "no results")
 
 ### Download (Grab)
+- **Two-step download flow**: (1) language picker (English or Czech audio — app language is pre-selected and listed first), then (2) quality tier picker
+- **Czech audio fallback**: if the gateway returns `no_czech_audio: true`, an alert dialog offers to download in English at the same quality tier instead
+- On-disk flags (`on_disk_en`, `on_disk_cs`) returned by the grab API are applied to the UI immediately — no reload needed
+- **Grab progress dialog**: a non-dismissible modal shown while the grab is in-flight, cycling through four stage messages every 1.6 s — "Fetching torrents" → "Checking torrent databases" → "Picking the best release" → "Starting the download" — dismissed automatically on completion or error
 - 4 quality tiers selectable per title:
   | Tier | Description |
   |------|-------------|
@@ -43,11 +52,13 @@ Complete list of everything the app and gateway can do.
 ### Downloads Screen
 - **Active** tab: downloading + queued torrents, sorted by qBittorrent priority
   - ▲/▼ buttons per tile for priority adjustment (optimistic update + 5s timer pause to prevent snap-back)
-  - Red stop button on the left of each tile — confirmation dialog → removes torrent + all partial files, cleans up Radarr/Sonarr queue
+  - Red stop button on the left of each tile — confirmation dialog → removes torrent + all partial files, cleans up Radarr/Sonarr queue records (season packs handled via bulk delete of all queue items)
   - Human-readable state labels (e.g. "Stalled — no peers" instead of raw `stalledDL`)
   - Per-tile: name, progress bar, speed (MB/s), ETA, state
-- **Finished** tab: seeding/completed torrents
-- Speed bar at bottom: global download + upload in MB/s (matches qBittorrent display)
+- **Finished** tab: seeding/completed/paused torrents
+  - Actively seeding torrents (`uploading`, `forcedUP`, `stalledUP`) show upload speed (↑ MB/s) and share ratio instead of DL speed + ETA
+  - API fields used: `upspeed_mbs`, `ratio` (added alongside existing `dlspeed_mbs`)
+- Speed bar at bottom: global download + upload in MB/s (matches qBittorrent display; API response keys: `dl_mbs`, `up_mbs`)
 - Pull-to-refresh on both tabs; auto-refresh every 1 second
 - Search/filter within the downloads list
 
@@ -57,13 +68,14 @@ Complete list of everything the app and gateway can do.
 - Poster, year, rating (TMDb), runtime, genre chips
 - Country of origin flags, network, status (movie/series)
 - Language chips + 2-step download picker (language → quality tier)
-- Expandable/collapsible overview (`Show more / Show less`)
-- Director credit line (movies only)
-- Cast horizontal scroll — circular actor photos with name label
+- Expandable/collapsible overview — threshold 220 characters (`Show more / Show less`)
+- Genre chips capped at 6; director credit line (movies only)
+- Cast horizontal scroll — circular actor photos with name label; capped at 15 members; falls back to initials avatar when no profile image is available
 - TV: season accordion — tap a season to expand episodes with color-coded quality dots (green = 1080p+, amber = 720p, red = SD)
+- Download flow raises a Czech audio fallback dialog if no Czech release is found, offering English download as an alternative
 
 ### Library
-- Grid view of all fully imported movies and TV shows
+- List view of all fully imported movies and TV shows — shows poster thumbnail, title, year, size (GB), and on-disk status
 - Tap → full detail view with all metadata (same as search)
 - Admin-only delete from detail view (removes files from disk)
 - Search within library
@@ -75,19 +87,20 @@ Complete list of everything the app and gateway can do.
 - Timestamps shown right-aligned in each row: "now" (<1 min), "5m" (<1 h), "2h" (<24 h), "3d" (<7 d), "8.6." (older)
 - Receives: download complete, quality alerts, new episodes found, download failures
 - **In-app system notifications** — two Android notification channels:
-  - `nas_downloads`: fires when a torrent completes (works in foreground + background)
+  - `downloads`: fires when a torrent completes (works in foreground + background)
   - `nas_alerts`: fires for gateway alerts (health, quality, new episodes) detected on each 60 s poll
   - Only genuinely new notifications trigger system alerts (baseline is set silently on first launch poll)
   - Up to 3 new notifications are surfaced per poll cycle
+  - SharedPreferences key `last_notif_id` (int) persists the highest seen notification ID across launches to prevent duplicate alerts
 - **Background notifications (WorkManager)** — periodic ~15-min task runs even when the app is fully killed:
   - Polls `/notifications` using raw HTTP (no Dio dependency in the isolate)
   - Re-authenticates automatically if the JWT is expired (uses stored remember-me credentials)
-  - Fires system bar notifications for any new items found
+  - Fires system bar notifications for any new items found; reads `app_lang` from SharedPreferences to fire Czech or English text
 
 ### Admin Features (admins group only)
 | Feature | Access |
 |---------|--------|
-| Media Sessions | View active streams from Plex + Jellyfin, kill a session; each session shows its source (PLEX / JELLYFIN) |
+| Media Sessions | View active streams from Plex + Jellyfin; each tile shows source badge (PLEX / JELLYFIN), last-seen relative timestamp (e.g. "3m ago"), and a red terminate button; sessions idle >300 s show grey icons/progress bar and an orange "stale" badge; auto-refreshes every 3 s; empty-state message when no sessions are active |
 | Speed Limits | Set qBittorrent download/upload caps (Mbit/s) |
 | Pause / Resume all | One-tap pause or resume all torrents |
 | User Management | Create, edit, delete users; set admin role; superadmins also see an "AI access" toggle |
@@ -113,17 +126,20 @@ Accessible via the **?** icon in the AppBar (visible from the main tabs). Step-b
 - Phone / tablet (Android, iOS): install Jellyfin → Add server → local address
 - Browser: open local address directly
 
-**Anywhere tab** — uses Cloudflare Tunnel (or Tailscale):
-- Tailscale setup guide with download links (Android, iOS, desktop)
-- Same TV / phone / browser steps with tunnel URL instead
-- Cloudflare Tunnel address card displayed
+**Anywhere tab** — uses Cloudflare Tunnel:
+- Info note: "No VPN or special setup needed — works on any device, anywhere in the world."
+- Same TV / phone / browser steps using the Cloudflare Tunnel Jellyfin URL (`https://jellyfin.mattyzem.com`)
+- NAS mobile app server URL card: `https://nas.mattyzem.com`
 
 Both tabs include a **Jellyfin app download card** with direct links to Google Play (Android) and the App Store (iOS).
 
 ### UI / UX
 - Dark mode by default, toggle in hamburger menu
+- Hamburger menu header: shows the logged-in user's display name (bold) and role ("admin" or "user") as a non-tappable item at the top of every menu
+- **Kill app** option at the bottom of the hamburger menu (shown in red, separated by a divider) — calls `exit(0)` for a clean shutdown
 - Czech / English language toggle in AppBar
 - Theme preference persisted across sessions
+- App language preference persisted to SharedPreferences (key: `app_lang`) and restored at startup; background WorkManager uses this key to fire Czech or English system notifications
 - **Error + Retry**: Downloads and Library screens show an inline error message with a Retry button if the gateway fetch fails
 
 ---
@@ -133,11 +149,11 @@ Both tabs include a **Jellyfin app download card** with direct links to Google P
 ### Endpoints
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/login` | — | Issue JWT; returns `is_admin`, `is_superadmin` |
+| POST | `/login` | — | Issue JWT; returns `is_admin`, `is_superadmin`, `displayname` |
 | GET | `/search` | user | Search movies/TV; `lang=cs` for Czech titles |
 | POST | `/grab` | user | Download a movie or TV series |
 | GET | `/downloads` | user | Active qBittorrent torrents |
-| GET | `/transfer` | user | Global dl/ul speed in MB/s |
+| GET | `/transfer` | user | Global dl/ul speed in MB/s; response keys: `dl_mbs`, `up_mbs` |
 | GET | `/library` | user | Radarr/Sonarr library (includes `tmdbId`, `tvdbId`, `overview`, `type`) |
 | DELETE | `/library` | admin | Delete item + files |
 | GET | `/detail` | user | Full item metadata (Radarr/Sonarr + TMDb) |
@@ -181,7 +197,7 @@ Both tabs include a **Jellyfin app download card** with direct links to Google P
 - **Stall detection**: `_check_series_grab_async` distinguishes stalled (no progress) from actively downloading torrents. Sends a "⚠️ Stalled" ntfy push and records a notification if all queue items for a series are stalled.
 - **Stall recovery on restart**: `_recover_stalled_grabs()` runs 5 minutes after gateway startup, re-scans series added in the last 35 minutes with all-stalled queues (handles the case where the daemon thread was killed by a container restart).
 - **Czech artifact cleanup**: on every gateway startup, `_cleanup_all_czech_artifacts()` scans Sonarr for any `__Czech Auto Grab__` custom formats and `__Czech Temp N__` quality profiles left over from interrupted grab attempts, reverts affected series to their original profile, and deletes them. Also runs at the start of each Czech grab to prevent conflicts.
-- **Bilingual notifications (EN + CS)**: every `_store_notification` call asks Ollama to translate the title and body to Czech. The in-memory notification stores both `title`/`body` (English) and `title_cs`/`body_cs` (Czech). The ntfy push includes both languages in the body (`English body\n🇨🇿 Czech body`). The in-app bell shows the language that matches the current app language setting. Falls back silently to English-only when Ollama is unavailable.
+- **Bilingual notifications (EN + CS)**: every `_store_notification` call asks Ollama to translate the title and body to Czech. The in-memory notification stores both `title`/`body` (English) and `title_cs`/`body_cs` (Czech). The ntfy push includes both languages in the body (`English body\nCzech body`). The in-app bell shows the language that matches the current app language setting. Falls back silently to English-only when Ollama is unavailable.
 
 ### Persistence
 - **AI chat history** stored in SQLite (`/app/data/ai_chats.db`, mounted from `./ai-gateway/data` on the host). Schema: `chats` (id, username, title, has_unread, created_at, updated_at) + `messages` (id, chat_id, role, content, ts). Conversations survive gateway restarts and are accessible from any device.
