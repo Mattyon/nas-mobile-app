@@ -164,6 +164,13 @@ const Map<String, Map<String, String>> _strings = {
     'aiChats': 'AI Chats',
     'chatHistory': 'Chat history',
     'cameraFeed': 'Camera Feed',
+    'cameras': 'Cameras',
+    'noCameras': 'No cameras configured',
+    'addCamera': 'Add Camera',
+    'cameraName': 'Camera name',
+    'cameraUrl': 'RTSP URL',
+    'cameraDelete': 'Delete camera',
+    'cameraDeleteConfirm': 'Delete this camera?',
   },
   'cs': {
     'app': 'Mattyho NAS',
@@ -325,6 +332,13 @@ const Map<String, Map<String, String>> _strings = {
     'aiChats': 'AI Chaty',
     'chatHistory': 'Historie chatů',
     'cameraFeed': 'Záběr z kamery',
+    'cameras': 'Kamery',
+    'noCameras': 'Žádné kamery',
+    'addCamera': 'Přidat kameru',
+    'cameraName': 'Název kamery',
+    'cameraUrl': 'RTSP URL',
+    'cameraDelete': 'Smazat kameru',
+    'cameraDeleteConfirm': 'Smazat tuto kameru?',
   },
 };
 

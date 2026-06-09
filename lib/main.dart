@@ -829,7 +829,7 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                         builder: (_) => const AiChatsListScreen()));
                   } else if (v == 'camera') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
-                        builder: (_) => const CameraFeedScreen()));
+                        builder: (_) => const CameraListScreen()));
                   } else if (v == 'help') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const HelpScreen()));
@@ -3542,11 +3542,176 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Camera feed screen (superadmin-only)
+// Camera list screen (superadmin-only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class CameraListScreen extends StatefulWidget {
+  const CameraListScreen({super.key});
+  @override
+  State<CameraListScreen> createState() => _CameraListScreenState();
+}
+
+class _CameraListScreenState extends State<CameraListScreen> with LangAware {
+  List<Map<String, dynamic>> _cameras = <Map<String, dynamic>>[];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final List<Map<String, dynamic>> cams = await Api.I.listCameras();
+      if (mounted) setState(() { _cameras = cams; _loading = false; });
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  Future<void> _showRenameDialog(Map<String, dynamic> cam) async {
+    final TextEditingController ctrl = TextEditingController(text: cam['name'] as String);
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: Text(tr('cameraName')),
+        content: TextField(controller: ctrl, autofocus: true,
+            decoration: InputDecoration(hintText: tr('cameraName'))),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('ok'))),
+        ],
+      ),
+    );
+    if (ok == true && ctrl.text.trim().isNotEmpty) {
+      await Api.I.renameCamera(cam['id'] as String, ctrl.text.trim());
+      await _load();
+    }
+  }
+
+  Future<void> _showAddDialog() async {
+    final TextEditingController nameCtrl = TextEditingController();
+    final TextEditingController urlCtrl = TextEditingController();
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: Text(tr('addCamera')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            TextField(controller: nameCtrl, autofocus: true,
+                decoration: InputDecoration(labelText: tr('cameraName'))),
+            const SizedBox(height: 8),
+            TextField(controller: urlCtrl,
+                decoration: InputDecoration(labelText: tr('cameraUrl')),
+                keyboardType: TextInputType.url),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('ok'))),
+        ],
+      ),
+    );
+    if (ok == true && nameCtrl.text.trim().isNotEmpty && urlCtrl.text.trim().isNotEmpty) {
+      await Api.I.addCamera(nameCtrl.text.trim(), urlCtrl.text.trim());
+      await _load();
+    }
+  }
+
+  Future<void> _confirmDelete(Map<String, dynamic> cam) async {
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: Text(tr('cameraDelete')),
+        content: Text(tr('cameraDeleteConfirm')),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('cancel'))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(tr('cameraDelete')),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await Api.I.deleteCamera(cam['id'] as String);
+      await _load();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(children: <Widget>[
+          const Icon(Icons.videocam_outlined, size: 20),
+          const SizedBox(width: 8),
+          Text(tr('cameras')),
+        ]),
+        actions: <Widget>[
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAddDialog,
+        child: const Icon(Icons.add),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(child: Text(_error!, style: const TextStyle(color: Colors.redAccent)))
+              : _cameras.isEmpty
+                  ? Center(child: Text(tr('noCameras'),
+                        style: const TextStyle(color: Colors.grey)))
+                  : ListView.builder(
+                      itemCount: _cameras.length,
+                      itemBuilder: (BuildContext ctx, int i) {
+                        final Map<String, dynamic> cam = _cameras[i];
+                        return ListTile(
+                          leading: const Icon(Icons.videocam_outlined),
+                          title: Text(cam['name'] as String),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              IconButton(
+                                icon: const Icon(Icons.edit_outlined, size: 20),
+                                onPressed: () => _showRenameDialog(cam),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, size: 20,
+                                    color: Colors.redAccent),
+                                onPressed: () => _confirmDelete(cam),
+                              ),
+                            ],
+                          ),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => CameraFeedScreen(
+                                id: cam['id'] as String,
+                                name: cam['name'] as String,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Camera feed screen
 // ─────────────────────────────────────────────────────────────────────────────
 
 class CameraFeedScreen extends StatefulWidget {
-  const CameraFeedScreen({super.key});
+  const CameraFeedScreen({super.key, required this.id, required this.name});
+  final String id;
+  final String name;
   @override
   State<CameraFeedScreen> createState() => _CameraFeedScreenState();
 }
@@ -3561,7 +3726,7 @@ class _CameraFeedScreenState extends State<CameraFeedScreen> with LangAware {
   void initState() {
     super.initState();
     _fetch();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _fetch());
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _fetch());
   }
 
   @override
@@ -3572,7 +3737,7 @@ class _CameraFeedScreenState extends State<CameraFeedScreen> with LangAware {
 
   Future<void> _fetch() async {
     try {
-      final Uint8List bytes = await Api.I.cameraSnapshot();
+      final Uint8List bytes = await Api.I.cameraSnapshot(widget.id);
       if (mounted) setState(() { _frame = bytes; _loading = false; _error = null; });
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _loading = _frame == null; });
@@ -3586,7 +3751,7 @@ class _CameraFeedScreenState extends State<CameraFeedScreen> with LangAware {
         title: Row(children: <Widget>[
           const Icon(Icons.videocam_outlined, size: 20),
           const SizedBox(width: 8),
-          Text(tr('cameraFeed')),
+          Text(widget.name),
         ]),
       ),
       body: _loading
@@ -3618,7 +3783,8 @@ class _CameraFeedScreenState extends State<CameraFeedScreen> with LangAware {
                             color: Colors.black54,
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Text(_error!, style: const TextStyle(color: Colors.orangeAccent),
+                          child: Text(_error!,
+                              style: const TextStyle(color: Colors.orangeAccent),
                               textAlign: TextAlign.center),
                         ),
                       ),

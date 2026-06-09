@@ -488,9 +488,30 @@ class Api {
     return r.data ?? <String, dynamic>{};
   }
 
-  Future<Uint8List> cameraSnapshot() async {
+  Future<List<Map<String, dynamic>>> listCameras() async {
+    final r = await _dio.get<List<dynamic>>('/cameras');
+    return (r.data ?? <dynamic>[]).cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> addCamera(String name, String rtspUrl) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/cameras',
+      data: <String, String>{'name': name, 'rtsp_url': rtspUrl},
+    );
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<void> renameCamera(String id, String name) async {
+    await _dio.patch<void>('/cameras/$id', data: <String, String>{'name': name});
+  }
+
+  Future<void> deleteCamera(String id) async {
+    await _dio.delete<void>('/cameras/$id');
+  }
+
+  Future<Uint8List> cameraSnapshot(String id) async {
     final Response<List<int>> r = await _dio.get<List<int>>(
-      '/stream/camera/snapshot',
+      '/cameras/$id/snapshot',
       options: Options(responseType: ResponseType.bytes),
     );
     return Uint8List.fromList(r.data!);
