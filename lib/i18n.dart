@@ -163,6 +163,7 @@ const Map<String, Map<String, String>> _strings = {
     'deleteChat': 'Delete chat',
     'aiChats': 'AI Chats',
     'chatHistory': 'Chat history',
+    'cameraFeed': 'Camera Feed',
   },
   'cs': {
     'app': 'Mattyho NAS',
@@ -323,6 +324,7 @@ const Map<String, Map<String, String>> _strings = {
     'deleteChat': 'Smazat chat',
     'aiChats': 'AI Chaty',
     'chatHistory': 'Historie chatů',
+    'cameraFeed': 'Záběr z kamery',
   },
 };
 

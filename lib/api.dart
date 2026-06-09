@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
@@ -485,5 +486,13 @@ class Api {
           }),
     );
     return r.data ?? <String, dynamic>{};
+  }
+
+  Future<Uint8List> cameraSnapshot() async {
+    final Response<List<int>> r = await _dio.get<List<int>>(
+      '/stream/camera/snapshot',
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return Uint8List.fromList(r.data!);
   }
 }

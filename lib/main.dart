@@ -827,6 +827,9 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                   } else if (v == 'ai') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const AiChatsListScreen()));
+                  } else if (v == 'camera') {
+                    Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => const CameraFeedScreen()));
                   } else if (v == 'help') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const HelpScreen()));
@@ -895,6 +898,15 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                         const Icon(Icons.smart_toy_outlined, size: 20),
                         const SizedBox(width: 12),
                         Text(tr('aiChats')),
+                      ]),
+                    ),
+                  if (Api.I.isSuperadmin)
+                    PopupMenuItem<String>(
+                      value: 'camera',
+                      child: Row(children: <Widget>[
+                        const Icon(Icons.videocam_outlined, size: 20),
+                        const SizedBox(width: 12),
+                        Text(tr('cameraFeed')),
                       ]),
                     ),
                   if (Api.I.isAdmin)
@@ -3527,4 +3539,91 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
   }
 
   String _p(int n) => n.toString().padLeft(2, '0');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Camera feed screen (superadmin-only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class CameraFeedScreen extends StatefulWidget {
+  const CameraFeedScreen({super.key});
+  @override
+  State<CameraFeedScreen> createState() => _CameraFeedScreenState();
+}
+
+class _CameraFeedScreenState extends State<CameraFeedScreen> with LangAware {
+  Uint8List? _frame;
+  bool _loading = true;
+  String? _error;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _fetch());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetch() async {
+    try {
+      final Uint8List bytes = await Api.I.cameraSnapshot();
+      if (mounted) setState(() { _frame = bytes; _loading = false; _error = null; });
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _loading = _frame == null; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(children: <Widget>[
+          const Icon(Icons.videocam_outlined, size: 20),
+          const SizedBox(width: 8),
+          Text(tr('cameraFeed')),
+        ]),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _frame == null
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const Icon(Icons.videocam_off_outlined, size: 64, color: Colors.grey),
+                      const SizedBox(height: 16),
+                      Text(_error ?? '', style: const TextStyle(color: Colors.redAccent),
+                          textAlign: TextAlign.center),
+                    ],
+                  ),
+                )
+              : Stack(
+                  children: <Widget>[
+                    InteractiveViewer(
+                      child: Center(child: Image.memory(_frame!, gaplessPlayback: true,
+                          fit: BoxFit.contain)),
+                    ),
+                    if (_error != null)
+                      Positioned(
+                        bottom: 12, left: 12, right: 12,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(_error!, style: const TextStyle(color: Colors.orangeAccent),
+                              textAlign: TextAlign.center),
+                        ),
+                      ),
+                  ],
+                ),
+    );
+  }
 }
