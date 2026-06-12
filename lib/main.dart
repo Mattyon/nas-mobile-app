@@ -3365,7 +3365,8 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
 
     final Color color = isWarning ? Colors.amber : Colors.redAccent;
     final String message = item['message'] as String? ?? '';
-    final bool canFix = category != 'check_error';
+    final bool isMissingEpisodes = category == 'missing_episodes';
+    final bool canFix = category != 'check_error' && !isMissingEpisodes;
     final bool isResolving = _resolving == message;
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -3374,9 +3375,24 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
         leading: Icon(isWarning ? Icons.warning_amber : Icons.error_outline, color: color),
         title: Text(_categoryLabel(category),
             style: TextStyle(fontWeight: FontWeight.w600, color: color)),
-        subtitle: message.isNotEmpty
-            ? Text(message, style: const TextStyle(fontSize: 12))
-            : null,
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            if (message.isNotEmpty)
+              Text(message, style: const TextStyle(fontSize: 12)),
+            if (isMissingEpisodes)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  tr('healthCheckMissingEpisodesNote'),
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontStyle: FontStyle.italic,
+                      color: color.withValues(alpha: 0.65)),
+                ),
+              ),
+          ],
+        ),
         trailing: canFix
             ? (isResolving
                 ? const SizedBox(
@@ -3517,15 +3533,16 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
 
   String _categoryLabel(String category) {
     switch (category) {
-      case 'missing_file':    return tr('healthCheckMissing');
+      case 'missing_file':       return tr('healthCheckMissing');
       case 'suspicious_size':
-      case 'small_file':      return tr('healthCheckSmall');
-      case 'not_imported':    return tr('healthCheckNotImported');
-      case 'torrent_error':   return tr('healthCheckQbtError');
-      case 'stalled':         return tr('healthCheckStalled');
-      case 'sonarr':          return tr('healthCheckSonarr');
-      case 'radarr':          return tr('healthCheckRadarr');
-      default:                return category;
+      case 'small_file':         return tr('healthCheckSmall');
+      case 'not_imported':       return tr('healthCheckNotImported');
+      case 'torrent_error':      return tr('healthCheckQbtError');
+      case 'stalled':            return tr('healthCheckStalled');
+      case 'sonarr':             return tr('healthCheckSonarr');
+      case 'radarr':             return tr('healthCheckRadarr');
+      case 'missing_episodes':   return tr('healthCheckMissingEpisodes');
+      default:                   return category;
     }
   }
 
