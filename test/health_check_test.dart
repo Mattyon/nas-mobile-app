@@ -42,13 +42,14 @@ void main() {
 
   group('i18n — health check category labels', () {
     const Map<String, String> categoryToKey = <String, String>{
-      'stalled':       'healthCheckStalled',
-      'missing_file':  'healthCheckMissing',
-      'small_file':    'healthCheckSmall',
-      'not_imported':  'healthCheckNotImported',
-      'torrent_error': 'healthCheckQbtError',
-      'sonarr':        'healthCheckSonarr',
-      'radarr':        'healthCheckRadarr',
+      'stalled':           'healthCheckStalled',
+      'missing_file':      'healthCheckMissing',
+      'small_file':        'healthCheckSmall',
+      'not_imported':      'healthCheckNotImported',
+      'torrent_error':     'healthCheckQbtError',
+      'sonarr':            'healthCheckSonarr',
+      'radarr':            'healthCheckRadarr',
+      'missing_episodes':  'healthCheckMissingEpisodes',
     };
 
     for (final MapEntry<String, String> entry in categoryToKey.entries) {
@@ -65,11 +66,31 @@ void main() {
       });
     }
 
-    test('all 7 category labels are distinct in EN', () {
+    test('all 8 category labels are distinct in EN', () {
       lang.value = 'en';
       final Set<String> vals = categoryToKey.values.map(tr).toSet();
       expect(vals.length, categoryToKey.length,
           reason: 'Each health check category must have a unique label');
+    });
+
+    test('EN healthCheckMissingEpisodesNote translated and non-empty', () {
+      lang.value = 'en';
+      final String v = tr('healthCheckMissingEpisodesNote');
+      expect(v, isNotEmpty);
+      expect(v, isNot(equals('healthCheckMissingEpisodesNote')));
+    });
+
+    test('CS healthCheckMissingEpisodesNote translated and non-empty', () {
+      lang.value = 'cs';
+      final String v = tr('healthCheckMissingEpisodesNote');
+      expect(v, isNotEmpty);
+      expect(v, isNot(equals('healthCheckMissingEpisodesNote')));
+    });
+
+    test('healthCheckMissingEpisodes and healthCheckMissingEpisodesNote are different', () {
+      lang.value = 'en';
+      expect(tr('healthCheckMissingEpisodes'),
+             isNot(equals(tr('healthCheckMissingEpisodesNote'))));
     });
   });
 
