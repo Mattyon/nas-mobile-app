@@ -1,7 +1,7 @@
 # nas-app
 
 Flutter mobile client (Android first; iOS later from the same codebase) for the NAS
-**AI gateway**. Talks to the gateway over **Tailscale** — no public exposure.
+**AI gateway**. Talks to the gateway over **Cloudflare Tunnel** (default) or **Tailscale** — both are supported.
 
 ## Features
 - **Login** against the gateway (`/login`) → JWT; role-aware (admin / superadmin).
@@ -11,15 +11,14 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
 - **Download** at **Fast / Balanced / Best / Czech audio** quality (AI/heuristic picks the release; goes through Radarr/Sonarr so it's imported, renamed, and subtitled).
 - **Downloads** tab — live progress / speed / ETA / state; drag to reorder; cancel with stop button.
 - **Library** tab — grid view; admins can delete a title from disk.
-- **Admin features** — media sessions (Plex + Jellyfin), speed limits, user management, speedtest, health check, AI chat.
+- **Admin features** — media sessions (Plex + Jellyfin), speed limits, user management, speedtest, health check.
+- **Superadmin features** — AI chat (multi-conversation, server-side history; requires `ai_access` flag).
 - **English + Čeština** UI with an in-app toggle.
 - **Notifications** — bell badge with unread count; timestamps; system bar notifications while foregrounded, backgrounded, or killed (WorkManager 15-min poll).
 - **Help / Connect screen** — step-by-step Jellyfin setup for TV, phone, and browser on both local network and remote (Cloudflare Tunnel / Tailscale).
 
 ## Configure
-On the login screen set **Gateway URL** to the gateway over your tailnet, e.g.
-`http://100.91.166.12:8000` (the NAS's Tailscale IP). The phone must have **Tailscale**
-installed + connected.
+On the login screen the **Gateway URL** is pre-set to `https://nas.mattyzem.com` (Cloudflare Tunnel — works on any network, no VPN needed). To use your own domain or a Tailscale IP instead, tap the URL field and change it.
 
 ## Build / run
 Requires the Flutter SDK + Android toolchain (JDK 17 + Android SDK), or just Android Studio.

@@ -65,4 +65,3 @@
 - [ ] Disk usage breakdown by show / movie
 - [ ] Scheduled maintenance window (pause downloads during sleep hours)
 - [ ] Multiple quality profiles per user (e.g., guest always gets Fast)
-- [ ] AI chat: rename on first message (auto-title from content)
