@@ -3550,6 +3550,7 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
       case 'sonarr':             return tr('healthCheckSonarr');
       case 'radarr':             return tr('healthCheckRadarr');
       case 'missing_episodes':   return tr('healthCheckMissingEpisodes');
+      case 'large_untracked':    return tr('healthCheckLargeUntracked');
       default:                   return category;
     }
   }
