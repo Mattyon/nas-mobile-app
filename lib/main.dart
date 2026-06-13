@@ -3328,10 +3328,15 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
       final Map<String, dynamic> result = await Api.I.healthResolve(item);
       if (!mounted) return;
       final bool ok = result['ok'] == true;
+      final String msg = result['message'] as String? ?? '';
       if (ok) {
-        // Stay in loading state and re-run health check — user sees the loader
-        // the whole time and only sees the updated report once the fix is confirmed.
         await _run();
+        if (mounted && msg.isNotEmpty) {
+          final String display =
+              msg.length > 120 ? '${msg.substring(0, 117)}...' : msg;
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(display), duration: const Duration(seconds: 8)));
+        }
       } else {
         final String msg = result['message'] as String? ?? 'Could not resolve.';
         setState(() => _resolving = null);
