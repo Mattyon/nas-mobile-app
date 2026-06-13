@@ -3132,6 +3132,7 @@ class HealthCheckScreen extends StatefulWidget {
 class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
   Map<String, dynamic>? _report;
   bool _running = false;
+  bool _loading = true;
   String? _error;
   String? _swapping; // key for in-progress swap: "${type}_${itemId}_${queueItemId}"
   String? _resolving; // message-key of the item currently being AI-resolved
@@ -3145,8 +3146,10 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
   Future<void> _load() async {
     try {
       final Map<String, dynamic> r = await Api.I.healthReport();
-      if (mounted) setState(() { _report = r; });
-    } catch (_) {}
+      if (mounted) setState(() { _report = r; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() { _loading = false; });
+    }
   }
 
   Future<void> _run() async {
@@ -3177,11 +3180,11 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
           ),
         ],
       ),
-      body: _running
+      body: (_loading || _running)
           ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
               const CircularProgressIndicator(),
               const SizedBox(height: 16),
-              Text(tr('healthCheckRunning')),
+              Text(_running ? tr('healthCheckRunning') : ''),
             ]))
           : _buildBody(theme),
     );
