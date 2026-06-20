@@ -516,4 +516,84 @@ class Api {
     );
     return Uint8List.fromList(r.data!);
   }
+
+  // ── Tapo smart sockets ──────────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> listTapoDevices() async {
+    final r = await _dio.get<List<dynamic>>('/tapo');
+    return (r.data ?? <dynamic>[]).cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> tapoAddDevice(String ip, String name) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/tapo',
+      data: <String, String>{'ip': ip, 'name': name},
+    );
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<void> tapoRenameDevice(String id, String name) async {
+    await _dio.patch<void>('/tapo/$id', data: <String, String>{'name': name});
+  }
+
+  Future<void> tapoDeleteDevice(String id) async {
+    await _dio.delete<void>('/tapo/$id');
+  }
+
+  Future<void> tapoOn(String id) async {
+    await _dio.post<void>('/tapo/$id/on');
+  }
+
+  Future<void> tapoOff(String id) async {
+    await _dio.post<void>('/tapo/$id/off');
+  }
+
+  Future<Map<String, dynamic>> tapoInfo(String id) async {
+    final r = await _dio.get<Map<String, dynamic>>('/tapo/$id/info');
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<void> tapoSetLed(String id, {required bool on}) async {
+    await _dio.post<void>('/tapo/$id/led', data: <String, bool>{'led_on': on});
+  }
+
+  Future<Map<String, dynamic>> tapoGetTimer(String id) async {
+    final r = await _dio.get<Map<String, dynamic>>('/tapo/$id/timer');
+    return r.data ?? <String, dynamic>{'rules': <dynamic>[]};
+  }
+
+  Future<void> tapoSetTimer(String id, {required int minutes, required bool turnOn}) async {
+    await _dio.post<void>('/tapo/$id/timer',
+        data: <String, dynamic>{'minutes': minutes, 'turn_on': turnOn});
+  }
+
+  Future<void> tapoCancelTimer(String id) async {
+    await _dio.delete<void>('/tapo/$id/timer');
+  }
+
+  Future<Map<String, dynamic>> tapoGetSchedule(String id) async {
+    final r = await _dio.get<Map<String, dynamic>>('/tapo/$id/schedule');
+    return r.data ?? <String, dynamic>{'rules': <dynamic>[]};
+  }
+
+  Future<void> tapoAddSchedule(
+    String id, {
+    required List<int> wday,
+    required int hour,
+    required int minute,
+    required bool turnOn,
+    bool enabled = true,
+  }) async {
+    await _dio.post<void>('/tapo/$id/schedule', data: <String, dynamic>{
+      'wday': wday,
+      'hour': hour,
+      'minute': minute,
+      'turn_on': turnOn,
+      'enabled': enabled,
+    });
+  }
+
+  Future<void> tapoDeleteSchedule(String id, String ruleId) async {
+    await _dio.delete<void>('/tapo/$id/schedule/$ruleId');
+  }
 }

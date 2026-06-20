@@ -827,6 +827,9 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                   } else if (v == 'ai') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const AiChatsListScreen()));
+                  } else if (v == 'tapo') {
+                    Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => const TapoDevicesScreen()));
                   } else if (v == 'camera') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const CameraListScreen()));
@@ -889,6 +892,15 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                         const Icon(Icons.people, size: 20),
                         const SizedBox(width: 12),
                         Text(tr('userManagement')),
+                      ]),
+                    ),
+                  if (Api.I.isAdmin)
+                    PopupMenuItem<String>(
+                      value: 'tapo',
+                      child: Row(children: <Widget>[
+                        const Icon(Icons.power_outlined, size: 20),
+                        const SizedBox(width: 12),
+                        Text(tr('tapoDevices')),
                       ]),
                     ),
                   if (Api.I.isSuperadmin)
@@ -3818,5 +3830,929 @@ class _CameraFeedScreenState extends State<CameraFeedScreen> with LangAware {
                   ],
                 ),
     );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tapo smart socket list screen
+// ─────────────────────────────────────────────────────────────────────────────
+
+class TapoDevicesScreen extends StatefulWidget {
+  const TapoDevicesScreen({super.key});
+  @override
+  State<TapoDevicesScreen> createState() => _TapoDevicesScreenState();
+}
+
+class _TapoDevicesScreenState extends State<TapoDevicesScreen> with LangAware {
+  List<Map<String, dynamic>> _devices = <Map<String, dynamic>>[];
+  bool _loading = true;
+  String? _error;
+  final Set<String> _toggling = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final List<Map<String, dynamic>> devs = await Api.I.listTapoDevices();
+      if (mounted) setState(() { _devices = devs; _loading = false; });
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  Future<void> _toggle(Map<String, dynamic> device, {required bool on}) async {
+    final String id = device['id'] as String;
+    setState(() => _toggling.add(id));
+    try {
+      if (on) {
+        await Api.I.tapoOn(id);
+      } else {
+        await Api.I.tapoOff(id);
+      }
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _toggling.remove(id));
+    }
+  }
+
+  Future<void> _showAddDialog() async {
+    final TextEditingController nameCtrl = TextEditingController();
+    final TextEditingController ipCtrl = TextEditingController();
+    bool adding = false;
+    String? addError;
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext ctx) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter ss) => AlertDialog(
+          title: Text(tr('tapoAdd')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              TextField(
+                controller: nameCtrl,
+                autofocus: true,
+                decoration: InputDecoration(labelText: tr('tapoSocketName')),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: ipCtrl,
+                decoration: InputDecoration(labelText: tr('tapoIpAddress')),
+                keyboardType: TextInputType.phone,
+              ),
+              if (addError != null) ...<Widget>[
+                const SizedBox(height: 8),
+                Text(addError!,
+                    style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+              ],
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: Text(tr('cancel'))),
+            FilledButton(
+              onPressed: adding
+                  ? null
+                  : () async {
+                      if (nameCtrl.text.trim().isEmpty || ipCtrl.text.trim().isEmpty) return;
+                      ss(() { adding = true; addError = null; });
+                      try {
+                        await Api.I.tapoAddDevice(
+                            ipCtrl.text.trim(), nameCtrl.text.trim());
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        _load();
+                      } catch (e) {
+                        ss(() { addError = e.toString(); adding = false; });
+                      }
+                    },
+              child: adding
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : Text(tr('ok')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showRenameDialog(Map<String, dynamic> device) async {
+    final TextEditingController ctrl =
+        TextEditingController(text: device['name'] as String);
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: Text(tr('tapoRename')),
+        content: TextField(controller: ctrl, autofocus: true),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false), child: Text(tr('cancel'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true), child: Text(tr('ok'))),
+        ],
+      ),
+    );
+    if (ok == true && ctrl.text.trim().isNotEmpty) {
+      await Api.I.tapoRenameDevice(device['id'] as String, ctrl.text.trim());
+      await _load();
+    }
+  }
+
+  Future<void> _confirmDelete(Map<String, dynamic> device) async {
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: Text(tr('tapoDelete')),
+        content: Text(tr('tapoDeleteConfirm')),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false), child: Text(tr('cancel'))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(tr('tapoDelete')),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await Api.I.tapoDeleteDevice(device['id'] as String);
+      await _load();
+    }
+  }
+
+  Future<void> _showContextMenu(Map<String, dynamic> device) async {
+    final String? action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: Text(tr('tapoRename')),
+              onTap: () => Navigator.pop(context, 'rename'),
+            ),
+            ListTile(
+              leading:
+                  const Icon(Icons.delete_outline, color: Colors.redAccent),
+              title: Text(tr('tapoDelete'),
+                  style: const TextStyle(color: Colors.redAccent)),
+              onTap: () => Navigator.pop(context, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (action == 'rename') {
+      await _showRenameDialog(device);
+    } else if (action == 'delete') {
+      await _confirmDelete(device);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(children: <Widget>[
+          const Icon(Icons.power_outlined, size: 20),
+          const SizedBox(width: 8),
+          Text(tr('tapoDevices')),
+        ]),
+        actions: <Widget>[
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAddDialog,
+        child: const Icon(Icons.add),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(
+                  child: Text(_error!,
+                      style: const TextStyle(color: Colors.redAccent)))
+              : _devices.isEmpty
+                  ? Center(
+                      child: Text(tr('tapoNoDevices'),
+                          style: const TextStyle(color: Colors.grey)))
+                  : ListView.builder(
+                      itemCount: _devices.length,
+                      itemBuilder: (BuildContext ctx, int i) {
+                        final Map<String, dynamic> dev = _devices[i];
+                        final bool on = dev['on'] as bool? ?? false;
+                        final bool online = dev['online'] as bool? ?? false;
+                        final bool busy =
+                            _toggling.contains(dev['id'] as String);
+                        final int sig = dev['signal_level'] as int? ?? 0;
+                        return ListTile(
+                          leading: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: on
+                                  ? Colors.green.withAlpha(38)
+                                  : Colors.grey.withAlpha(25),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(Icons.power_outlined,
+                                color: on ? Colors.green : Colors.grey),
+                          ),
+                          title: Text(dev['name'] as String),
+                          subtitle: online
+                              ? Text(
+                                  on ? tr('tapoOn') : tr('tapoOff'),
+                                  style: TextStyle(
+                                      color: on ? Colors.green : Colors.grey,
+                                      fontSize: 12),
+                                )
+                              : Text(tr('tapoOffline'),
+                                  style: const TextStyle(
+                                      color: Colors.redAccent, fontSize: 12)),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              if (online) _TapoSignalIcon(level: sig),
+                              const SizedBox(width: 4),
+                              if (busy)
+                                const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2))
+                              else
+                                Switch(
+                                  value: on,
+                                  onChanged: online
+                                      ? (bool v) => _toggle(dev, on: v)
+                                      : null,
+                                ),
+                            ],
+                          ),
+                          onTap: () => Navigator.of(context)
+                              .push(MaterialPageRoute<void>(
+                                builder: (_) => TapoDeviceDetailScreen(
+                                  id: dev['id'] as String,
+                                  name: dev['name'] as String,
+                                ),
+                              ))
+                              .then((_) => _load()),
+                          onLongPress: () => _showContextMenu(dev),
+                        );
+                      },
+                    ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tapo device detail screen
+// ─────────────────────────────────────────────────────────────────────────────
+
+class TapoDeviceDetailScreen extends StatefulWidget {
+  const TapoDeviceDetailScreen(
+      {super.key, required this.id, required this.name});
+  final String id;
+  final String name;
+  @override
+  State<TapoDeviceDetailScreen> createState() =>
+      _TapoDeviceDetailScreenState();
+}
+
+class _TapoDeviceDetailScreenState extends State<TapoDeviceDetailScreen>
+    with LangAware {
+  Map<String, dynamic>? _info;
+  List<Map<String, dynamic>> _schedule = <Map<String, dynamic>>[];
+  Map<String, dynamic>? _activeTimer;
+  bool _loading = true;
+  String? _error;
+  bool _powerBusy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (_info == null) setState(() { _loading = true; _error = null; });
+    try {
+      final List<Object> results = await Future.wait(<Future<Object>>[
+        Api.I.tapoInfo(widget.id),
+        Api.I.tapoGetSchedule(widget.id),
+        Api.I.tapoGetTimer(widget.id),
+      ]);
+      if (!mounted) return;
+      final Map<String, dynamic> info =
+          results[0] as Map<String, dynamic>;
+      final List<dynamic> schedRules =
+          ((results[1] as Map<String, dynamic>)['rules'] as List<dynamic>?) ??
+              <dynamic>[];
+      final List<dynamic> timerRules =
+          ((results[2] as Map<String, dynamic>)['rules'] as List<dynamic>?) ??
+              <dynamic>[];
+      setState(() {
+        _info = info;
+        _schedule =
+            schedRules.cast<Map<String, dynamic>>();
+        _activeTimer = timerRules.isNotEmpty
+            ? timerRules.first as Map<String, dynamic>?
+            : null;
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  Future<void> _togglePower() async {
+    if (_info == null || _powerBusy) return;
+    final bool isOn = _info!['on'] as bool? ?? false;
+    setState(() => _powerBusy = true);
+    try {
+      if (isOn) {
+        await Api.I.tapoOff(widget.id);
+      } else {
+        await Api.I.tapoOn(widget.id);
+      }
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _powerBusy = false);
+    }
+  }
+
+  Future<void> _toggleLed({required bool on}) async {
+    try {
+      await Api.I.tapoSetLed(widget.id, on: on);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
+  Future<void> _showTimerDialog() async {
+    final TextEditingController minsCtrl =
+        TextEditingController(text: '60');
+    bool turnOn = false;
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext ctx) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter ss) => AlertDialog(
+          title: Text(tr('tapoSetTimer')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              TextField(
+                controller: minsCtrl,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                decoration:
+                    InputDecoration(labelText: tr('tapoTimerMinutes'), suffixText: 'min'),
+              ),
+              const SizedBox(height: 16),
+              Row(children: <Widget>[
+                Text(tr('tapoTimerAction')),
+                const Spacer(),
+                ToggleButtons(
+                  isSelected: <bool>[turnOn, !turnOn],
+                  onPressed: (int i) => ss(() => turnOn = i == 0),
+                  children: <Widget>[
+                    Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(tr('tapoOn'))),
+                    Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(tr('tapoOff'))),
+                  ],
+                ),
+              ]),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(tr('cancel'))),
+            FilledButton(
+              onPressed: () async {
+                final int? mins = int.tryParse(minsCtrl.text.trim());
+                if (mins == null || mins < 1 || mins > 1440) return;
+                Navigator.pop(ctx);
+                try {
+                  await Api.I.tapoSetTimer(widget.id,
+                      minutes: mins, turnOn: turnOn);
+                  await _load();
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(SnackBar(content: Text(e.toString())));
+                  }
+                }
+              },
+              child: Text(tr('ok')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _cancelTimer() async {
+    try {
+      await Api.I.tapoCancelTimer(widget.id);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
+  Future<void> _showAddScheduleDialog() async {
+    final List<bool> days = List<bool>.filled(7, false);
+    bool turnOn = true;
+    TimeOfDay time = const TimeOfDay(hour: 8, minute: 0);
+    const List<String> dayLabels = <String>[
+      'Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'
+    ];
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext ctx) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter ss) => AlertDialog(
+          title: Text(tr('tapoAddSchedule')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(tr('tapoDays'),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w500, fontSize: 13)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 4,
+                children: List<Widget>.generate(
+                  7,
+                  (int i) => FilterChip(
+                    label: Text(dayLabels[i]),
+                    selected: days[i],
+                    onSelected: (bool v) => ss(() => days[i] = v),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(children: <Widget>[
+                Text(tr('tapoTime')),
+                const Spacer(),
+                TextButton(
+                  onPressed: () async {
+                    final TimeOfDay? picked =
+                        await showTimePicker(context: context, initialTime: time);
+                    if (picked != null) ss(() => time = picked);
+                  },
+                  child: Text(
+                    '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 4),
+              Row(children: <Widget>[
+                Text(tr('tapoAction')),
+                const Spacer(),
+                ToggleButtons(
+                  isSelected: <bool>[turnOn, !turnOn],
+                  onPressed: (int i) => ss(() => turnOn = i == 0),
+                  children: <Widget>[
+                    Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(tr('tapoOn'))),
+                    Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(tr('tapoOff'))),
+                  ],
+                ),
+              ]),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(tr('cancel'))),
+            FilledButton(
+              onPressed: () async {
+                if (!days.any((bool d) => d)) return;
+                Navigator.pop(ctx);
+                try {
+                  await Api.I.tapoAddSchedule(
+                    widget.id,
+                    wday: List<int>.generate(7, (int i) => days[i] ? 1 : 0),
+                    hour: time.hour,
+                    minute: time.minute,
+                    turnOn: turnOn,
+                  );
+                  await _load();
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(SnackBar(content: Text(e.toString())));
+                  }
+                }
+              },
+              child: Text(tr('ok')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteSchedule(String ruleId) async {
+    try {
+      await Api.I.tapoDeleteSchedule(widget.id, ruleId);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
+  String _formatDuration(int seconds) {
+    if (seconds < 60) return '${seconds}s';
+    if (seconds < 3600) return '${seconds ~/ 60}m';
+    final int h = seconds ~/ 3600;
+    final int m = (seconds % 3600) ~/ 60;
+    return m > 0 ? '${h}h ${m}m' : '${h}h';
+  }
+
+  String _scheduleLabel(Map<String, dynamic> rule) {
+    final List<dynamic> wday =
+        rule['wday'] as List<dynamic>? ?? List<dynamic>.filled(7, 0);
+    final int smin = rule['smin'] as int? ?? 0;
+    final bool turnOn =
+        ((rule['desired_states'] as Map<String, dynamic>?)?['on'] as bool?) ??
+            true;
+    final int h = smin ~/ 60;
+    final int m = smin % 60;
+    final String time =
+        '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+    const List<String> labels = <String>['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+    final List<String> active = <String>[
+      for (int i = 0; i < 7; i++)
+        if (wday[i] == 1 || wday[i] == true) labels[i]
+    ];
+    return '$time  ·  ${active.isEmpty ? '—' : active.join(' ')}  ·  ${turnOn ? tr('tapoOn') : tr('tapoOff')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.name),
+        actions: <Widget>[
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null && _info == null
+              ? Center(
+                  child: Text(_error!,
+                      style: const TextStyle(color: Colors.redAccent)))
+              : _buildBody(colors),
+    );
+  }
+
+  Widget _buildBody(ColorScheme colors) {
+    final Map<String, dynamic> info = _info!;
+    final bool on = info['on'] as bool? ?? false;
+    final bool ledOff = info['led_off'] as bool? ?? false;
+    final int onTime = info['on_time'] as int? ?? 0;
+    final int sig = info['signal_level'] as int? ?? 0;
+    final Map<String, dynamic> usage =
+        (info['usage'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        children: <Widget>[
+          // ── Power ──────────────────────────────────────
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+              child: Column(children: <Widget>[
+                GestureDetector(
+                  onTap: _powerBusy ? null : _togglePower,
+                  child: Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: on
+                          ? Colors.green.withAlpha(38)
+                          : colors.surfaceContainerHighest,
+                      border: Border.all(
+                          color: on ? Colors.green : Colors.grey, width: 2.5),
+                    ),
+                    child: _powerBusy
+                        ? const Padding(
+                            padding: EdgeInsets.all(30),
+                            child: CircularProgressIndicator(strokeWidth: 2.5))
+                        : Icon(Icons.power_settings_new,
+                            size: 52,
+                            color: on ? Colors.green : Colors.grey),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  on ? tr('tapoOn') : tr('tapoOff'),
+                  style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: on ? Colors.green : Colors.grey),
+                ),
+                if (on && onTime > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('${tr('tapoUptime')}: ${_formatDuration(onTime)}',
+                        style:
+                            const TextStyle(fontSize: 12, color: Colors.grey)),
+                  ),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // ── Device info ────────────────────────────────
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(tr('tapoDeviceInfo'),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13)),
+                  const SizedBox(height: 10),
+                  _TapoInfoRow(label: tr('tapoModel'),
+                      value: info['model'] as String? ?? '—'),
+                  _TapoInfoRow(label: tr('tapoFirmware'),
+                      value: info['fw_ver'] as String? ?? '—'),
+                  _TapoInfoRow(label: tr('tapoHardware'),
+                      value: info['hw_ver'] as String? ?? '—'),
+                  _TapoInfoRow(label: 'MAC',
+                      value: info['mac'] as String? ?? '—'),
+                  _TapoInfoRow(label: 'IP',
+                      value: info['ip'] as String? ?? '—'),
+                  _TapoInfoRow(
+                      label: tr('tapoSignal'),
+                      value: '${info['rssi'] ?? 0} dBm ($sig/3)'),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // ── LED ────────────────────────────────────────
+          Card(
+            child: SwitchListTile(
+              secondary: const Icon(Icons.lightbulb_outline),
+              title: Text(tr('tapoLed')),
+              subtitle: Text(ledOff ? tr('tapoOff') : tr('tapoOn')),
+              value: !ledOff,
+              onChanged: (bool v) => _toggleLed(on: v),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // ── Usage ──────────────────────────────────────
+          if (usage.isNotEmpty) ...<Widget>[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(tr('tapoUsage'),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 13)),
+                    const SizedBox(height: 12),
+                    Row(children: <Widget>[
+                      Expanded(child: _TapoUsageStat(
+                          label: tr('tapoToday'),
+                          minutes: usage['today'] as int? ?? 0)),
+                      Expanded(child: _TapoUsageStat(
+                          label: tr('tapoPast7'),
+                          minutes: usage['past7'] as int? ?? 0)),
+                      Expanded(child: _TapoUsageStat(
+                          label: tr('tapoPast30'),
+                          minutes: usage['past30'] as int? ?? 0)),
+                    ]),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+
+          // ── Timer ──────────────────────────────────────
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(children: <Widget>[
+                    const Icon(Icons.timer_outlined, size: 18),
+                    const SizedBox(width: 8),
+                    Text(tr('tapoTimer'),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 13)),
+                    const Spacer(),
+                    if (_activeTimer != null)
+                      TextButton(
+                        style: TextButton.styleFrom(
+                            foregroundColor: Colors.redAccent),
+                        onPressed: _cancelTimer,
+                        child: Text(tr('tApoCancelTimer')),
+                      )
+                    else
+                      TextButton(
+                          onPressed: _showTimerDialog,
+                          child: Text(tr('tapoSetTimer'))),
+                  ]),
+                  if (_activeTimer != null) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Builder(builder: (BuildContext context) {
+                      final int remain =
+                          _activeTimer!['remain'] as int? ?? 0;
+                      final bool timerOn =
+                          ((_activeTimer!['desired_states']
+                                      as Map<String, dynamic>?)?['on']
+                                  as bool?) ??
+                              false;
+                      return Text(
+                        '${_formatDuration(remain)} → ${timerOn ? tr('tapoOn') : tr('tapoOff')}',
+                        style: const TextStyle(fontSize: 13),
+                      );
+                    }),
+                  ] else
+                    Text(tr('tapoNoTimer'),
+                        style: const TextStyle(
+                            color: Colors.grey, fontSize: 13)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // ── Schedule ───────────────────────────────────
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(children: <Widget>[
+                    const Icon(Icons.schedule_outlined, size: 18),
+                    const SizedBox(width: 8),
+                    Text(tr('tapoSchedule'),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 13)),
+                    const Spacer(),
+                    TextButton(
+                        onPressed: _showAddScheduleDialog,
+                        child: Text(tr('tapoAddSchedule'))),
+                  ]),
+                  if (_schedule.isEmpty)
+                    Text(tr('tapoNoSchedule'),
+                        style: const TextStyle(
+                            color: Colors.grey, fontSize: 13))
+                  else
+                    ..._schedule.map((Map<String, dynamic> rule) {
+                      final bool enabled =
+                          rule['enable'] as bool? ?? true;
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        leading: Icon(Icons.access_time_outlined,
+                            size: 18,
+                            color: enabled ? null : Colors.grey),
+                        title: Text(
+                          _scheduleLabel(rule),
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: enabled ? null : Colors.grey),
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline,
+                              size: 18, color: Colors.redAccent),
+                          onPressed: () => _deleteSchedule(
+                              rule['id'] as String? ?? ''),
+                        ),
+                      );
+                    }),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 80),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tapo helper widgets
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TapoSignalIcon extends StatelessWidget {
+  const _TapoSignalIcon({required this.level});
+  final int level;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color color = level >= 3
+        ? Colors.green
+        : level >= 2
+            ? Colors.orange
+            : Colors.redAccent;
+    final IconData icon = level >= 3
+        ? Icons.signal_wifi_4_bar
+        : level >= 2
+            ? Icons.network_wifi_2_bar
+            : level >= 1
+                ? Icons.network_wifi_1_bar
+                : Icons.signal_wifi_0_bar;
+    return Icon(icon, size: 16, color: color);
+  }
+}
+
+class _TapoInfoRow extends StatelessWidget {
+  const _TapoInfoRow({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(children: <Widget>[
+        SizedBox(
+          width: 90,
+          child: Text(label,
+              style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        ),
+        Expanded(child: Text(value, style: const TextStyle(fontSize: 13))),
+      ]),
+    );
+  }
+}
+
+class _TapoUsageStat extends StatelessWidget {
+  const _TapoUsageStat({required this.label, required this.minutes});
+  final String label;
+  final int minutes;
+
+  @override
+  Widget build(BuildContext context) {
+    final int h = minutes ~/ 60;
+    final int m = minutes % 60;
+    final String display =
+        h > 0 ? '${h}h${m > 0 ? ' ${m}m' : ''}' : '${m}m';
+    return Column(children: <Widget>[
+      Text(display,
+          style: const TextStyle(
+              fontSize: 16, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 2),
+      Text(label,
+          style: const TextStyle(fontSize: 11, color: Colors.grey)),
+    ]);
   }
 }
