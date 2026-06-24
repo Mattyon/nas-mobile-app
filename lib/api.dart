@@ -22,6 +22,7 @@ class Api {
     receiveTimeout: const Duration(seconds: 30),
   ));
   String baseUrl = 'https://nas.mattyzem.com'; // public gateway via Cloudflare Tunnel
+  String jellyfinUrl = 'https://jellyfin.mattyzem.com';
   String? token;
   String? username;
   String? displayName;
@@ -38,12 +39,19 @@ class Api {
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     baseUrl = prefs.getString('baseUrl') ?? baseUrl;
+    jellyfinUrl = prefs.getString('jellyfinUrl') ?? jellyfinUrl;
     groups = prefs.getStringList('groups') ?? <String>[];
     username = prefs.getString('username');
     displayName = prefs.getString('displayName');
     isSuperadmin = prefs.getBool('isSuperadmin') ?? false;
     token = await _secure.read(key: 'token');
     _build();
+    // Seed Jellyfin AA token on startup if logged in but token or URL not yet stored.
+    if (token != null && (!prefs.containsKey('aa_jellyfin_token') || !prefs.containsKey('jellyfinUrl'))) {
+      final u = await _secure.read(key: 'rememberUser');
+      final p = await _secure.read(key: 'rememberPass');
+      if (u != null && p != null) _seedJellyfinTokenForAA(u, p);
+    }
   }
 
   void _build() {
@@ -82,6 +90,18 @@ class Api {
     _build();
   }
 
+  Future<void> setJellyfinUrl(String url) async {
+    jellyfinUrl = url.trim();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('jellyfinUrl', jellyfinUrl);
+  }
+
+  Future<void> reseedJellyfinToken() async {
+    final u = await _secure.read(key: 'rememberUser');
+    final p = await _secure.read(key: 'rememberPass');
+    if (u != null && p != null) await _seedJellyfinTokenForAA(u, p);
+  }
+
   // ----------------------------- auth / remember-me --------------------------
 
   Future<void> login(String username, String password) async {
@@ -108,6 +128,7 @@ class Api {
     await prefs.setString('username', username ?? '');
     await prefs.setString('displayName', displayName ?? username ?? '');
     await prefs.setBool('isSuperadmin', isSuperadmin);
+    await prefs.setString('aa_token', token ?? '');
   }
 
   /// Returns true if credentials are stored and not expired.
@@ -128,6 +149,35 @@ class Api {
     await _secure.write(key: 'rememberUser', value: username);
     await _secure.write(key: 'rememberPass', value: password);
     await _secure.write(key: 'rememberExpiry', value: exp.toString());
+    await _seedJellyfinTokenForAA(username, password);
+  }
+
+  /// Authenticates with Jellyfin and stores the token in plain SharedPreferences
+  /// so the Android Auto car service can read it without EncryptedSharedPreferences.
+  Future<void> _seedJellyfinTokenForAA(String user, String pass) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jUrl = jellyfinUrl;
+      await prefs.setString('jellyfinUrl', jUrl);
+      final jDio = Dio(BaseOptions(
+        baseUrl: jUrl,
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 15),
+      ));
+      final resp = await jDio.post<Map<String, dynamic>>(
+        '/Users/AuthenticateByName',
+        data: <String, String>{'Username': user, 'Pw': pass},
+        options: Options(headers: <String, String>{
+          'X-Emby-Authorization':
+              'MediaBrowser Client="NAS Auto", Device="Android", DeviceId="nas-dart-aa", Version="1.0"',
+        }),
+      );
+      final jToken = resp.data?['AccessToken'] as String?;
+      final userId =
+          (resp.data?['User'] as Map<String, dynamic>?)?['Id'] as String?;
+      if (jToken != null) await prefs.setString('aa_jellyfin_token', jToken);
+      if (userId != null) await prefs.setString('aa_jellyfin_userid', userId);
+    } catch (_) {}
   }
 
   /// Refreshes the 365-day expiry (call on each successful use).
@@ -201,6 +251,9 @@ class Api {
     baseUrl = 'https://nas.mattyzem.com';
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('baseUrl');
+    await prefs.remove('aa_token');
+    await prefs.remove('aa_jellyfin_token');
+    await prefs.remove('aa_jellyfin_userid');
     await _secure.delete(key: 'token');
     _build();
   }

@@ -794,6 +794,70 @@ class _HomeShellState extends State<HomeShell> with LangAware {
     );
   }
 
+  Future<void> _showJellyfinSettingsDialog(BuildContext context) async {
+    final TextEditingController urlCtrl =
+        TextEditingController(text: Api.I.jellyfinUrl);
+    bool saving = false;
+    String? status;
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext ctx) => StatefulBuilder(
+        builder: (BuildContext ctx2, StateSetter setState) => AlertDialog(
+          title: const Text('Jellyfin URL'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text(
+                'Set the Jellyfin server URL for Android Auto playback.',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: urlCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'URL',
+                  hintText: 'https://jellyfin.mattyzem.com',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.url,
+                autocorrect: false,
+              ),
+              if (status != null) ...<Widget>[
+                const SizedBox(height: 8),
+                Text(status!, style: TextStyle(
+                  fontSize: 12,
+                  color: status!.startsWith('✓') ? Colors.green : Colors.redAccent,
+                )),
+              ],
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(tr('cancel')),
+            ),
+            FilledButton(
+              onPressed: saving ? null : () async {
+                setState(() { saving = true; status = null; });
+                try {
+                  await Api.I.setJellyfinUrl(urlCtrl.text.trim());
+                  await Api.I.reseedJellyfinToken();
+                  setState(() { status = '✓ Saved & token refreshed'; saving = false; });
+                } catch (_) {
+                  setState(() { status = 'Saved URL (token refresh failed — will retry on next login)'; saving = false; });
+                }
+              },
+              child: saving
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
@@ -844,6 +908,8 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                         builder: (_) => const UsersScreen()));
                   } else if (v == 'speed') {
                     _showSpeedDialog(context);
+                  } else if (v == 'jellyfin') {
+                    _showJellyfinSettingsDialog(context);
                   } else if (v == 'theme') {
                     await _toggleTheme();
                   } else if (v == 'logout') {
@@ -945,6 +1011,14 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                       const Icon(Icons.tv, size: 20),
                       const SizedBox(width: 12),
                       Text(tr('checkNewEps')),
+                    ]),
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'jellyfin',
+                    child: Row(children: <Widget>[
+                      const Icon(Icons.play_circle_outline, size: 20),
+                      const SizedBox(width: 12),
+                      const Text('Jellyfin URL'),
                     ]),
                   ),
                   PopupMenuItem<String>(
@@ -4138,6 +4212,7 @@ class _TapoDeviceDetailScreenState extends State<TapoDeviceDetailScreen>
   List<Map<String, dynamic>> _schedule = <Map<String, dynamic>>[];
   Map<String, dynamic>? _activeTimer;
   bool _loading = true;
+  bool _cloudLoading = true;
   String? _error;
   bool _powerBusy = false;
 
@@ -4150,32 +4225,37 @@ class _TapoDeviceDetailScreenState extends State<TapoDeviceDetailScreen>
   Future<void> _load() async {
     if (_info == null) setState(() { _loading = true; _error = null; });
     try {
-      final List<Object> results = await Future.wait(<Future<Object>>[
-        Api.I.tapoInfo(widget.id),
+      final Map<String, dynamic> info = await Api.I.tapoInfo(widget.id);
+      if (!mounted) return;
+      setState(() { _info = info; _loading = false; _error = null; });
+      // Load cloud data (timer/schedule) in background — don't block the page
+      _loadCloudData();
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  Future<void> _loadCloudData() async {
+    if (mounted) setState(() => _cloudLoading = true);
+    try {
+      final List<Map<String, dynamic>> results = await Future.wait(<Future<Map<String, dynamic>>>[
         Api.I.tapoGetSchedule(widget.id),
         Api.I.tapoGetTimer(widget.id),
       ]);
       if (!mounted) return;
-      final Map<String, dynamic> info =
-          results[0] as Map<String, dynamic>;
       final List<dynamic> schedRules =
-          ((results[1] as Map<String, dynamic>)['rules'] as List<dynamic>?) ??
-              <dynamic>[];
+          (results[0]['rules'] as List<dynamic>?) ?? <dynamic>[];
       final List<dynamic> timerRules =
-          ((results[2] as Map<String, dynamic>)['rules'] as List<dynamic>?) ??
-              <dynamic>[];
+          (results[1]['rules'] as List<dynamic>?) ?? <dynamic>[];
       setState(() {
-        _info = info;
-        _schedule =
-            schedRules.cast<Map<String, dynamic>>();
+        _schedule = schedRules.cast<Map<String, dynamic>>();
         _activeTimer = timerRules.isNotEmpty
             ? timerRules.first as Map<String, dynamic>?
             : null;
-        _loading = false;
-        _error = null;
+        _cloudLoading = false;
       });
-    } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _cloudLoading = false);
     }
   }
 
@@ -4293,12 +4373,14 @@ class _TapoDeviceDetailScreenState extends State<TapoDeviceDetailScreen>
   Future<void> _showAddScheduleDialog() async {
     final List<bool> days = List<bool>.filled(7, false);
     bool turnOn = true;
+    bool saving = false;
     TimeOfDay time = const TimeOfDay(hour: 8, minute: 0);
     const List<String> dayLabels = <String>[
       'Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'
     ];
     await showDialog<void>(
       context: context,
+      barrierDismissible: false,
       builder: (BuildContext ctx) => StatefulBuilder(
         builder: (BuildContext context, StateSetter ss) => AlertDialog(
           title: Text(tr('tapoAddSchedule')),
@@ -4317,7 +4399,7 @@ class _TapoDeviceDetailScreenState extends State<TapoDeviceDetailScreen>
                   (int i) => FilterChip(
                     label: Text(dayLabels[i]),
                     selected: days[i],
-                    onSelected: (bool v) => ss(() => days[i] = v),
+                    onSelected: saving ? null : (bool v) => ss(() => days[i] = v),
                   ),
                 ),
               ),
@@ -4326,7 +4408,7 @@ class _TapoDeviceDetailScreenState extends State<TapoDeviceDetailScreen>
                 Text(tr('tapoTime')),
                 const Spacer(),
                 TextButton(
-                  onPressed: () async {
+                  onPressed: saving ? null : () async {
                     final TimeOfDay? picked =
                         await showTimePicker(context: context, initialTime: time);
                     if (picked != null) ss(() => time = picked);
@@ -4343,7 +4425,7 @@ class _TapoDeviceDetailScreenState extends State<TapoDeviceDetailScreen>
                 const Spacer(),
                 ToggleButtons(
                   isSelected: <bool>[turnOn, !turnOn],
-                  onPressed: (int i) => ss(() => turnOn = i == 0),
+                  onPressed: saving ? null : (int i) => ss(() => turnOn = i == 0),
                   children: <Widget>[
                     Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -4358,12 +4440,11 @@ class _TapoDeviceDetailScreenState extends State<TapoDeviceDetailScreen>
           ),
           actions: <Widget>[
             TextButton(
-                onPressed: () => Navigator.pop(ctx),
+                onPressed: saving ? null : () => Navigator.pop(ctx),
                 child: Text(tr('cancel'))),
             FilledButton(
-              onPressed: () async {
-                if (!days.any((bool d) => d)) return;
-                Navigator.pop(ctx);
+              onPressed: saving || !days.any((bool d) => d) ? null : () async {
+                ss(() => saving = true);
                 try {
                   await Api.I.tapoAddSchedule(
                     widget.id,
@@ -4372,15 +4453,21 @@ class _TapoDeviceDetailScreenState extends State<TapoDeviceDetailScreen>
                     minute: time.minute,
                     turnOn: turnOn,
                   );
+                  if (ctx.mounted) Navigator.pop(ctx);
                   await _load();
                 } catch (e) {
+                  if (ctx.mounted) Navigator.pop(ctx);
                   if (mounted) {
-                    ScaffoldMessenger.of(context)
+                    ScaffoldMessenger.of(this.context)
                         .showSnackBar(SnackBar(content: Text(e.toString())));
                   }
                 }
               },
-              child: Text(tr('ok')),
+              child: saving
+                  ? const SizedBox(
+                      width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : Text(tr('ok')),
             ),
           ],
         ),
@@ -4409,9 +4496,8 @@ class _TapoDeviceDetailScreenState extends State<TapoDeviceDetailScreen>
   }
 
   String _scheduleLabel(Map<String, dynamic> rule) {
-    final List<dynamic> wday =
-        rule['wday'] as List<dynamic>? ?? List<dynamic>.filled(7, 0);
-    final int smin = rule['smin'] as int? ?? 0;
+    final int weekDay = rule['week_day'] as int? ?? 0;
+    final int smin = rule['s_min'] as int? ?? 0;
     final bool turnOn =
         ((rule['desired_states'] as Map<String, dynamic>?)?['on'] as bool?) ??
             true;
@@ -4422,9 +4508,10 @@ class _TapoDeviceDetailScreenState extends State<TapoDeviceDetailScreen>
     const List<String> labels = <String>['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
     final List<String> active = <String>[
       for (int i = 0; i < 7; i++)
-        if (wday[i] == 1 || wday[i] == true) labels[i]
+        if (weekDay & (1 << i) != 0) labels[i]
     ];
-    return '$time  ·  ${active.isEmpty ? '—' : active.join(' ')}  ·  ${turnOn ? tr('tapoOn') : tr('tapoOff')}';
+    final String daysStr = active.isEmpty ? '' : '  ·  ${active.join(' ')}';
+    return '$time$daysStr  ·  ${turnOn ? tr('tapoOn') : tr('tapoOff')}';
   }
 
   @override
@@ -4649,7 +4736,16 @@ class _TapoDeviceDetailScreenState extends State<TapoDeviceDetailScreen>
                         onPressed: _showAddScheduleDialog,
                         child: Text(tr('tapoAddSchedule'))),
                   ]),
-                  if (_schedule.isEmpty)
+                  if (_cloudLoading && _schedule.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Center(
+                        child: SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                      ),
+                    )
+                  else if (_schedule.isEmpty)
                     Text(tr('tapoNoSchedule'),
                         style: const TextStyle(
                             color: Colors.grey, fontSize: 13))
