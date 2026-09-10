@@ -3006,7 +3006,10 @@ class _AiChatScreenState extends State<AiChatScreen> with LangAware {
       appBar: AppBar(
         title: Text(_title),
       ),
-      body: _loading
+      // SafeArea keeps the input row above the Android gesture/nav bar
+      // (viewInsets below only accounts for the keyboard, not system nav).
+      body: SafeArea(
+        child: _loading
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: <Widget>[
@@ -3077,6 +3080,7 @@ class _AiChatScreenState extends State<AiChatScreen> with LangAware {
                 ),
               ],
             ),
+      ),
     );
   }
 }
