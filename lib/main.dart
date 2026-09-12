@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -231,6 +232,143 @@ Future<void> _bgPollNotifications() async {
   }
 }
 
+// ----------------------------- instant push (foreground service) -------------
+//
+// The 15-min WorkManager poll above is a safety net; this is the primary path.
+// A foreground service holds one persistent connection to /notifications/stream
+// (the gateway's proxy onto self-hosted ntfy) and re-fetches /notifications the
+// instant something arrives, instead of waiting for the next periodic poll.
+
+/// Runs in its own isolate — set up via [_pushStreamCallback].
+class _PushStreamTaskHandler extends TaskHandler {
+  bool _stopped = false;
+
+  @override
+  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    _stopped = false;
+    unawaited(_runLoop());
+  }
+
+  Future<void> _runLoop() async {
+    while (!_stopped) {
+      Duration backoff = const Duration(seconds: 10);
+      try {
+        backoff = await _streamOnce();
+      } catch (_) {
+        // network hiccup / parse error — fall through to the default backoff
+      }
+      if (_stopped) break;
+      await Future<void>.delayed(backoff);
+    }
+  }
+
+  /// Opens one streaming connection and processes it until it ends or errors.
+  /// Returns how long to wait before the next reconnect attempt.
+  Future<Duration> _streamOnce() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String baseUrl =
+        prefs.getString('baseUrl') ?? 'https://nas.mattyzem.com';
+    const FlutterSecureStorage secure = FlutterSecureStorage();
+    final String? token = await secure.read(key: 'token');
+    if (token == null) return const Duration(seconds: 30);
+
+    HttpClient? client;
+    try {
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+      final HttpClientRequest req =
+          await client.getUrl(Uri.parse('$baseUrl/notifications/stream'));
+      req.headers.set('Authorization', 'Bearer $token');
+      final HttpClientResponse resp = await req.close();
+
+      if (resp.statusCode == 401) {
+        await _bgReauth(baseUrl, secure);
+        return const Duration(seconds: 2); // retry immediately with the fresh token
+      }
+      if (resp.statusCode != 200) return const Duration(seconds: 15);
+
+      await for (final String line
+          in resp.transform(utf8.decoder).transform(const LineSplitter())) {
+        if (_stopped) break;
+        if (line.trim().isEmpty) continue;
+        Map<String, dynamic>? evt;
+        try {
+          evt = jsonDecode(line) as Map<String, dynamic>;
+        } catch (_) {
+          continue; // ntfy sends non-JSON keepalive bytes on some proxies — ignore
+        }
+        if (evt['event'] == 'message') await _bgPollNotifications();
+      }
+      return const Duration(seconds: 5); // stream ended cleanly — reconnect promptly
+    } finally {
+      client?.close(force: true);
+    }
+  }
+
+  @override
+  void onRepeatEvent(DateTime timestamp) {}
+
+  @override
+  Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
+    _stopped = true;
+  }
+}
+
+/// Top-level entry point required by flutter_foreground_task — runs in the
+/// service isolate, not the UI isolate.
+@pragma('vm:entry-point')
+void _pushStreamCallback() {
+  FlutterForegroundTask.setTaskHandler(_PushStreamTaskHandler());
+}
+
+void _initPushService() {
+  FlutterForegroundTask.init(
+    androidNotificationOptions: AndroidNotificationOptions(
+      // NOTE: Android locks a channel's importance at creation time — changing it
+      // later is ignored. The channelId is versioned (…_v2) so this MIN-importance
+      // channel is created fresh, actually silencing the persistent notification
+      // (no sound, no heads-up, no status-bar icon; shows only low in the shade).
+      channelId: 'nas_push_listener_v2',
+      channelName: 'Background connection',
+      channelDescription:
+          'Keeps the app connected so NAS alerts arrive immediately.',
+      channelImportance: NotificationChannelImportance.MIN,
+      priority: NotificationPriority.MIN,
+      onlyAlertOnce: true,
+    ),
+    iosNotificationOptions: const IOSNotificationOptions(showNotification: false),
+    foregroundTaskOptions: ForegroundTaskOptions(
+      eventAction: ForegroundTaskEventAction.nothing(),
+      autoRunOnBoot: true,
+      autoRunOnMyPackageReplaced: true,
+      allowWakeLock: true,
+      allowWifiLock: true,
+    ),
+  );
+}
+
+Future<void> _startPushService() async {
+  if (await FlutterForegroundTask.checkNotificationPermission() !=
+      NotificationPermission.granted) {
+    await FlutterForegroundTask.requestNotificationPermission();
+  }
+  if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
+    await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+  }
+  if (await FlutterForegroundTask.isRunningService) {
+    await FlutterForegroundTask.restartService();
+    return;
+  }
+  await FlutterForegroundTask.startService(
+    serviceId: 257,
+    serviceTypes: const [ForegroundServiceTypes.dataSync],
+    // Minimal, non-annoying text (the service notification can't be removed on
+    // Android, only made unobtrusive via the MIN channel above).
+    notificationTitle: 'NAS',
+    notificationText: '',
+    callback: _pushStreamCallback,
+  );
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -249,6 +387,9 @@ Future<void> main() async {
       existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
       constraints: Constraints(networkType: NetworkType.connected),
     );
+    FlutterForegroundTask.initCommunicationPort();
+    _initPushService();
+    await _startPushService();
   }
   runApp(const NasApp());
 }

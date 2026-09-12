@@ -34,6 +34,10 @@ class VideoPlayerScreen(
     private var isBuffering = false
     private var error: String? = null
 
+    // Navigation surface is only available to NAVIGATION category apps (AAOS).
+    // POI category (used for Android Auto real-car compatibility) cannot get a surface.
+    private var surfaceAvailable = false
+
     private val currentItem get() = items.getOrNull(currentIndex)
 
     private fun buildTitle(): String {
@@ -63,7 +67,12 @@ class VideoPlayerScreen(
     }
 
     init {
-        carContext.getCarService(AppManager::class.java).setSurfaceCallback(surfaceCallback)
+        runCatching {
+            carContext.getCarService(AppManager::class.java).setSurfaceCallback(surfaceCallback)
+            surfaceAvailable = true
+        }.onFailure {
+            Log.d("NasAA", "VideoPlayerScreen: surface not available (POI category) – ${it.message}")
+        }
         lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onDestroy(owner: LifecycleOwner) { releasePlayer() }
         })
@@ -119,6 +128,15 @@ class VideoPlayerScreen(
     }
 
     override fun onGetTemplate(): Template {
+        if (!surfaceAvailable) {
+            return MessageTemplate.Builder(
+                "Video playback requires Android Automotive OS.\n\nUse the NAS app on your phone to watch videos from Jellyfin."
+            )
+                .setTitle(buildTitle().take(60))
+                .setHeaderAction(Action.BACK)
+                .build()
+        }
+
         val err = error
         if (err != null) {
             return MessageTemplate.Builder(err)
@@ -139,7 +157,6 @@ class VideoPlayerScreen(
             else        -> "Play"
         }
 
-        // NavigationTemplate action strip max 4 buttons; build conditionally based on context.
         val actionStripBuilder = ActionStrip.Builder()
         val hasMultiple = items.size > 1
 

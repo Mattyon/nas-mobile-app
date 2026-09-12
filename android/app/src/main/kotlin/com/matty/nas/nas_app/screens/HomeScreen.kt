@@ -22,7 +22,15 @@ class HomeScreen(carContext: CarContext) : Screen(carContext) {
     private var sockets: JSONArray? = null
     private var loaded = false
 
-    override fun onGetTemplate(): Template {
+    override fun onGetTemplate(): Template = runCatching { buildTemplate() }.getOrElse { e ->
+        MessageTemplate.Builder("Error: ${e.javaClass.simpleName}: ${e.message}")
+            .setTitle("NAS – Startup Error")
+            .addAction(Action.Builder().setTitle("Retry")
+                .setOnClickListener { loaded = false; invalidate() }.build())
+            .build()
+    }
+
+    private fun buildTemplate(): Template {
         if (!api.isLoggedIn) {
             return MessageTemplate.Builder("Open the NAS app on your phone to log in first.")
                 .setTitle("NAS")

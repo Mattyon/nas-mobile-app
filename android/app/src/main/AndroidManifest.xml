@@ -6,13 +6,14 @@
     <uses-permission android:name="android.permission.USE_FINGERPRINT"/>
     <!-- Required for system notifications on Android 13+. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <!-- Required by Android Auto for the NAVIGATION app category. -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-    <!-- Car App Library permissions — declared by Android Auto (gearhead) on phones,
-         and by the templates host on AAOS. We only request them here. -->
-    <uses-permission android:name="androidx.car.app.ACCESS_SURFACE"/>
+    <!-- Prevents Samsung FreecessController from blocking Android Auto's OLAF unfreeze. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+    <!-- Foreground service holding the instant-push connection to /notifications/stream. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES"/>
+    <uses-permission android:name="androidx.car.app.ACCESS_SURFACE"/>
 
     <application
         android:label="NAS"
@@ -41,16 +42,14 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <!-- Car App Library activity for Android Automotive OS (AAOS) -->
+        <!-- Car App Library activity for Android Automotive OS (AAOS).
+             No LAUNCHER intent-filter here — phones don't need a second home-screen icon.
+             AAOS discovers this via the NasCarAppService registration below. -->
         <activity
             android:name="androidx.car.app.activity.CarAppActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
             <meta-data
                 android:name="distractionOptimized"
                 android:value="true" />
@@ -64,18 +63,28 @@
                 <action android:name="androidx.car.app.CarAppService" />
                 <category android:name="androidx.car.app.category.NAVIGATION" />
             </intent-filter>
+            <meta-data
+                android:name="androidx.car.app.minCarApiLevel"
+                android:value="2" />
         </service>
 
-        <!-- Car App Library: min API level (must be application-level, not service-level) -->
-        <meta-data
-            android:name="androidx.car.app.minCarApiLevel"
-            android:value="2" />
+        <!-- flutter_foreground_task: holds the instant-push connection to
+             /notifications/stream alive while the app is backgrounded. -->
+        <service
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
 
         <!-- Declare Android Auto support -->
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc"/>
 
+
+        <!-- Car App Library 1.7.0 reads minCarApiLevel from application-level meta-data via getApplicationInfo. -->
+        <meta-data
+            android:name="androidx.car.app.minCarApiLevel"
+            android:value="2" />
 
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
