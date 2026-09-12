@@ -32,10 +32,26 @@ void main() {
   String _eta(Object? s) {
     final int sec = (s is num) ? s.toInt() : 0;
     if (sec <= 0 || sec >= 8640000) return '∞';
-    final int h = sec ~/ 3600, m = (sec % 3600) ~/ 60;
+    final int d = sec ~/ 86400;
+    final int h = (sec % 86400) ~/ 3600;
+    final int m = (sec % 3600) ~/ 60;
+    if (d > 0) return '${d}d ${h}h';
     if (h > 0) return '${h}h ${m}m';
     if (m > 0) return '${m}m';
     return '${sec}s';
+  }
+
+  String _fmtBytes(num bytes) {
+    final double b = bytes.toDouble();
+    if (b >= 1024 * 1024 * 1024 * 1024) {
+      return '${(b / (1024 * 1024 * 1024 * 1024)).toStringAsFixed(1)} TB';
+    }
+    if (b >= 1024 * 1024 * 1024) {
+      return '${(b / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+    }
+    if (b >= 1024 * 1024) return '${(b / (1024 * 1024)).toStringAsFixed(0)} MB';
+    if (b >= 1024) return '${(b / 1024).toStringAsFixed(0)} KB';
+    return '${b.toStringAsFixed(0)} B';
   }
 
   String _subtitleStats(Map<String, dynamic> t) {
@@ -47,8 +63,11 @@ void main() {
       final num ratio = (t['ratio'] as num?) ?? 0;
       return '${pct.toStringAsFixed(1)}%  •  ↑ $up MB/s  •  Ratio ${ratio.toStringAsFixed(2)}  •  $label';
     }
+    final num sizeB = (t['size_bytes'] as num?) ?? 0;
+    final num doneB = (t['downloaded_bytes'] as num?) ?? 0;
+    final String size = sizeB > 0 ? '  •  ${_fmtBytes(doneB)} / ${_fmtBytes(sizeB)}' : '';
     return '${pct.toStringAsFixed(1)}%  •  ${t['dlspeed_mbs'] ?? 0} MB/s  •  '
-        'ETA ${_eta(t['eta_sec'])}  •  $label';
+        'ETA ${_eta(t['eta_sec'])}  •  $label$size';
   }
 
   // ── _seedingStates membership ─────────────────────────────────────────────
@@ -207,6 +226,36 @@ void main() {
     test('shows Error label', () => expect(_subtitleStats(t), contains('Error')));
     test('does NOT show Ratio', () =>
         expect(_subtitleStats(t), isNot(contains('Ratio'))));
+  });
+
+  // ── Active downloads show "downloaded / total" in readable units ──────────
+
+  group('downloaded / total size display', () {
+    test('bytes format to human units', () {
+      expect(_fmtBytes(354 * 1024 * 1024), '354 MB');
+      expect(_fmtBytes((35.6 * 1024 * 1024 * 1024).round()), '35.6 GB');
+      expect(_fmtBytes(0), '0 B');
+    });
+
+    test('downloading state appends "downloaded / total" after label', () {
+      final Map<String, dynamic> t = <String, dynamic>{
+        'state': 'downloading',
+        'progress': 1.0,
+        'dlspeed_mbs': 2.0,
+        'eta_sec': 60,
+        'size_bytes': (35.6 * 1024 * 1024 * 1024).round(),
+        'downloaded_bytes': 354 * 1024 * 1024,
+      };
+      final String s = _subtitleStats(t);
+      expect(s, contains('Downloading  •  354 MB / 35.6 GB'));
+    });
+
+    test('no size shown when size_bytes is absent (keeps old format)', () {
+      final Map<String, dynamic> t = <String, dynamic>{
+        'state': 'downloading', 'progress': 45.0, 'dlspeed_mbs': 3.2, 'eta_sec': 3661,
+      };
+      expect(_subtitleStats(t), '45.0%  •  3.2 MB/s  •  ETA 1h 1m  •  Downloading');
+    });
   });
 
   // ── Ratio formatting: always 2 decimal places ─────────────────────────────

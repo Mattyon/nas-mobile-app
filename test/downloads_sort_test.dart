@@ -18,7 +18,10 @@ void main() {
   String _eta(Object? s) {
     final int sec = (s is num) ? s.toInt() : 0;
     if (sec <= 0 || sec >= 8640000) return '∞';
-    final int h = sec ~/ 3600, m = (sec % 3600) ~/ 60;
+    final int d = sec ~/ 86400;
+    final int h = (sec % 86400) ~/ 3600;
+    final int m = (sec % 3600) ~/ 60;
+    if (d > 0) return '${d}d ${h}h';
     if (h > 0) return '${h}h ${m}m';
     if (m > 0) return '${m}m';
     return '${sec}s';
@@ -144,6 +147,13 @@ void main() {
     test('3661s → "1h 1m"', () => expect(_eta(3661), '1h 1m'));
     test('7322s → "2h 2m"', () => expect(_eta(7322), '2h 2m'));
     test('86399s → "23h 59m"', () => expect(_eta(86399), '23h 59m'));
+  });
+
+  group('downloads — ETA: days+hours display (no longer capped at hours)', () {
+    test('86400s (24h) → "1d 0h"', () => expect(_eta(86400), '1d 0h'));
+    test('946800s (263h) → "10d 23h"', () => expect(_eta(946800), '10d 23h'));
+    test('just under the ∞ cap 8639999s → "99d 23h"',
+        () => expect(_eta(8639999), '99d 23h'));
   });
 
   group('downloads — ETA: double value coerced to int', () {

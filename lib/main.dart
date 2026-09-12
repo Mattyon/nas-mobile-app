@@ -1766,7 +1766,10 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   String _eta(Object? s) {
     final int sec = (s is num) ? s.toInt() : 0;
     if (sec <= 0 || sec >= 8640000) return '∞';
-    final int h = sec ~/ 3600, m = (sec % 3600) ~/ 60;
+    final int d = sec ~/ 86400;
+    final int h = (sec % 86400) ~/ 3600;
+    final int m = (sec % 3600) ~/ 60;
+    if (d > 0) return '${d}d ${h}h';
     if (h > 0) return '${h}h ${m}m';
     if (m > 0) return '${m}m';
     return '${sec}s';
@@ -1780,26 +1783,28 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   };
   static const Set<String> _failedStates = <String>{'error', 'missingFiles'};
 
+  // qBittorrent state -> i18n key (resolved with tr() at render time so the
+  // label follows the app language). Unmapped states fall back to the raw state.
   static const Map<String, String> _stateLabel = <String, String>{
-    'downloading': 'Downloading',
-    'forcedDL': 'Downloading',
-    'stalledDL': 'Stalled — no peers',
-    'metaDL': 'Fetching metadata',
-    'checkingDL': 'Checking',
-    'allocating': 'Allocating',
-    'queuedDL': 'Queued',
-    'pausedDL': 'Paused',
-    'stoppedDL': 'Stopped',
-    'uploading': 'Seeding',
-    'forcedUP': 'Seeding',
-    'stalledUP': 'Seeding (stalled)',
-    'checkingUP': 'Checking',
-    'pausedUP': 'Paused',
-    'stoppedUP': 'Stopped',
-    'error': 'Error',
-    'missingFiles': 'Missing files',
-    'moving': 'Moving',
-    'unknown': 'Unknown',
+    'downloading': 'stateDownloading',
+    'forcedDL': 'stateDownloading',
+    'stalledDL': 'stateStalledNoPeers',
+    'metaDL': 'stateFetchingMetadata',
+    'checkingDL': 'stateChecking',
+    'allocating': 'stateAllocating',
+    'queuedDL': 'stateQueued',
+    'pausedDL': 'statePaused',
+    'stoppedDL': 'stateStopped',
+    'uploading': 'stateSeeding',
+    'forcedUP': 'stateSeeding',
+    'stalledUP': 'stateSeedingStalled',
+    'checkingUP': 'stateChecking',
+    'pausedUP': 'statePaused',
+    'stoppedUP': 'stateStopped',
+    'error': 'stateError',
+    'missingFiles': 'stateMissingFiles',
+    'moving': 'stateMoving',
+    'unknown': 'stateUnknown',
   };
 
   bool _isFailed(String s) => _failedStates.contains(s);
@@ -1870,17 +1875,35 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     _refresh();
   }
 
+  /// Human-readable byte size: 354 MB, 35.6 GB, 1.2 TB.
+  static String _fmtBytes(num bytes) {
+    final double b = bytes.toDouble();
+    if (b >= 1024 * 1024 * 1024 * 1024) {
+      return '${(b / (1024 * 1024 * 1024 * 1024)).toStringAsFixed(1)} TB';
+    }
+    if (b >= 1024 * 1024 * 1024) {
+      return '${(b / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+    }
+    if (b >= 1024 * 1024) return '${(b / (1024 * 1024)).toStringAsFixed(0)} MB';
+    if (b >= 1024) return '${(b / 1024).toStringAsFixed(0)} KB';
+    return '${b.toStringAsFixed(0)} B';
+  }
+
   String _subtitleStats(Map<String, dynamic> t) {
     final double pct = (t['progress'] as num?)?.toDouble() ?? 0;
     final String state = t['state']?.toString() ?? '';
-    final String label = _stateLabel[state] ?? state;
+    final String label = tr(_stateLabel[state] ?? state);
     if (_seedingStates.contains(state)) {
       final num up = (t['upspeed_mbs'] as num?) ?? 0;
       final num ratio = (t['ratio'] as num?) ?? 0;
-      return '${pct.toStringAsFixed(1)}%  •  ↑ $up MB/s  •  Ratio ${ratio.toStringAsFixed(2)}  •  $label';
+      return '${pct.toStringAsFixed(1)}%  •  ↑ $up MB/s  •  ${tr('ratio')} ${ratio.toStringAsFixed(2)}  •  $label';
     }
+    // Active downloads: append "downloaded / total" (e.g. 354 MB / 35.6 GB).
+    final num sizeB = (t['size_bytes'] as num?) ?? 0;
+    final num doneB = (t['downloaded_bytes'] as num?) ?? 0;
+    final String size = sizeB > 0 ? '  •  ${_fmtBytes(doneB)} / ${_fmtBytes(sizeB)}' : '';
     return '${pct.toStringAsFixed(1)}%  •  ${t['dlspeed_mbs'] ?? 0} MB/s  •  '
-        'ETA ${_eta(t['eta_sec'])}  •  $label';
+        '${tr('eta')} ${_eta(t['eta_sec'])}  •  $label$size';
   }
 
   Widget _tile(Map<String, dynamic> t,
