@@ -272,6 +272,7 @@ class Api {
     int? tvdbId,
     required String tier,
     String language = 'en',
+    String source = 'prowlarr',
   }) async {
     final r = await _dio.post<Map<String, dynamic>>('/grab',
         data: <String, dynamic>{
@@ -280,6 +281,7 @@ class Api {
           'tmdbId': tmdbId,
           'tvdbId': tvdbId,
           'language': language,
+          'source': source,
         });
     return r.data!;
   }

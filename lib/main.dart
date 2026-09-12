@@ -1336,13 +1336,50 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
   }
 
   Future<void> _grab(Map<String, dynamic> item) async {
+    // Step 0: source picker (ThePirateBay is AI-access only; others skip this step).
+    String source = 'prowlarr';
+    if (Api.I.isSuperadmin) {
+      final String? picked = await _pickSource();
+      if (picked == null || !mounted) return;
+      source = picked;
+    }
     // Step 1: language picker
     final String? language = await _pickLanguage(item);
     if (language == null || !mounted) return;
     // Step 2: quality picker
     final String? tier = await _pickQuality(language);
     if (tier == null || !mounted) return;
-    await _doGrab(item, language, tier);
+    await _doGrab(item, language, tier, source);
+  }
+
+  Future<String?> _pickSource() {
+    return showModalBottomSheet<String>(
+      context: context,
+      builder: (BuildContext ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(tr('pickSource'),
+                    style: Theme.of(ctx).textTheme.titleMedium)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.storage),
+            title: Text(tr('sourceStandard')),
+            subtitle: Text(tr('sourceStandardDesc')),
+            onTap: () => Navigator.pop(ctx, 'prowlarr'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.psychology),
+            title: Text(tr('sourceTpb')),
+            subtitle: Text(tr('sourceTpbDesc')),
+            onTap: () => Navigator.pop(ctx, 'tpb'),
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
   }
 
   Future<String?> _pickLanguage(Map<String, dynamic> item) {
@@ -1439,7 +1476,8 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
     );
   }
 
-  Future<void> _doGrab(Map<String, dynamic> item, String language, String tier) async {
+  Future<void> _doGrab(Map<String, dynamic> item, String language, String tier,
+      String source) async {
     setState(() => _grabbing = _key(item));
     final VoidCallback closeStages = _showStages();
     final String itype = item['type']?.toString() ?? 'movie';
@@ -1450,12 +1488,14 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
         tvdbId: itype == 'tv' ? item['tvdbId'] as int? : null,
         tier: tier,
         language: language,
+        source: source,
       );
 
       if (result['no_czech_audio'] == true) {
         closeStages();
         if (mounted) setState(() => _grabbing = null);
-        await _offerEnglishFallback(item, tier, result['title']?.toString() ?? '');
+        await _offerEnglishFallback(
+            item, tier, result['title']?.toString() ?? '', source);
         return;
       }
 
@@ -1483,7 +1523,7 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
   }
 
   Future<void> _offerEnglishFallback(
-      Map<String, dynamic> item, String tier, String title) async {
+      Map<String, dynamic> item, String tier, String title, String source) async {
     final String tierLabel = tr(tier);
     final String msg = tr('noCzechAudioMsg')
         .replaceFirst('{title}', title)
@@ -1504,7 +1544,7 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
       ),
     );
     if (confirmed == true && mounted) {
-      await _doGrab(item, 'en', tier);
+      await _doGrab(item, 'en', tier, source);
     }
   }
 
@@ -1559,6 +1599,8 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(m),
       duration: const Duration(seconds: 6),
+      // Dismiss by swiping left or right (instead of the default downward swipe).
+      dismissDirection: DismissDirection.horizontal,
       action: SnackBarAction(
         label: tr('downloads'),
         onPressed: () => selectedTab.value = 1,

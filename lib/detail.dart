@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'api.dart';
 import 'i18n.dart';
@@ -73,11 +75,51 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
   // ── grab flow ────────────────────────────────────────────────────────────────
 
   Future<void> _grab() async {
+    // ThePirateBay is an AI-access-only source. Non-AI users keep the original
+    // single-source flow with no extra step.
+    String source = 'prowlarr';
+    if (Api.I.isSuperadmin) {
+      final String? picked = await _pickSource();
+      if (picked == null || !mounted) return;
+      source = picked;
+    }
     final String? language = await _pickLanguage();
     if (language == null || !mounted) return;
     final String? tier = await _pickQuality(language);
     if (tier == null || !mounted) return;
-    await _doGrab(language, tier);
+    await _doGrab(language, tier, source);
+  }
+
+  Future<String?> _pickSource() {
+    return showModalBottomSheet<String>(
+      context: context,
+      builder: (BuildContext ctx) {
+        return SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(tr('pickSource'),
+                      style: Theme.of(ctx).textTheme.titleMedium)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.storage),
+              title: Text(tr('sourceStandard')),
+              subtitle: Text(tr('sourceStandardDesc')),
+              onTap: () => Navigator.pop(ctx, 'prowlarr'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.psychology),
+              title: Text(tr('sourceTpb')),
+              subtitle: Text(tr('sourceTpbDesc')),
+              onTap: () => Navigator.pop(ctx, 'tpb'),
+            ),
+            const SizedBox(height: 8),
+          ]),
+        );
+      },
+    );
   }
 
   Future<String?> _pickLanguage() {
@@ -171,8 +213,53 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
     );
   }
 
-  Future<void> _doGrab(String language, String tier) async {
+  /// Modal with a spinner that cycles through grab stage messages while we wait.
+  /// Mirrors the search-list flow so Download shows the same steps everywhere.
+  /// The returned close callback is idempotent (safe to call more than once).
+  VoidCallback _showStages() {
+    final List<String> stages = <String>[
+      tr('stageSearch'), tr('stageDatabases'), tr('stagePick'), tr('stageStart'),
+    ];
+    final ValueNotifier<int> step = ValueNotifier<int>(0);
+    final Timer timer = Timer.periodic(const Duration(milliseconds: 1600), (_) {
+      if (step.value < stages.length - 1) step.value++;
+    });
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const SizedBox(
+                  width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+              const SizedBox(width: 18),
+              Flexible(
+                child: ValueListenableBuilder<int>(
+                  valueListenable: step,
+                  builder: (_, int i, _) => Text(stages[i]),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    bool closed = false;
+    return () {
+      if (closed) return;
+      closed = true;
+      timer.cancel();
+      step.dispose();
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    };
+  }
+
+  Future<void> _doGrab(String language, String tier, String source) async {
     setState(() => _grabbing = true);
+    final VoidCallback closeStages = _showStages();
     final String itype = _item['type'] as String? ?? 'movie';
     try {
       final Map<String, dynamic> result = await Api.I.grab(
@@ -181,12 +268,16 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
         tvdbId: itype == 'tv' ? _item['tvdbId'] as int? : null,
         tier: tier,
         language: language,
+        source: source,
       );
+      closeStages();
       if (!mounted) return;
       if (result['no_czech_audio'] == true) {
         setState(() => _grabbing = false);
         await _offerFallback(
-            tier, result['title']?.toString() ?? _item['title']?.toString() ?? '');
+            tier,
+            result['title']?.toString() ?? _item['title']?.toString() ?? '',
+            source);
         return;
       }
       setState(() {
@@ -199,6 +290,8 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
         }
       });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          // Dismiss by swiping left or right (instead of the default downward swipe).
+          dismissDirection: DismissDirection.horizontal,
           content:
               Text(itype == 'tv' ? tr('requestedTv') : tr('added'))));
     } catch (_) {
@@ -207,11 +300,12 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
             .showSnackBar(SnackBar(content: Text(tr('error'))));
       }
     } finally {
+      closeStages();
       if (mounted) setState(() => _grabbing = false);
     }
   }
 
-  Future<void> _offerFallback(String tier, String title) async {
+  Future<void> _offerFallback(String tier, String title, String source) async {
     final bool? ok = await showDialog<bool>(
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
@@ -229,7 +323,7 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
         ],
       ),
     );
-    if (ok == true && mounted) await _doGrab('en', tier);
+    if (ok == true && mounted) await _doGrab('en', tier, source);
   }
 
   // ── build ────────────────────────────────────────────────────────────────────
