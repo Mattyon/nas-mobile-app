@@ -11,6 +11,7 @@ void main() {
       'healthCheckMissing', 'healthCheckSmall', 'healthCheckNotImported',
       'healthCheckQbtError', 'healthCheckStalled',
       'healthCheckSonarr', 'healthCheckRadarr',
+      'healthCheckMissingEpisodesNote', 'healthCheckMissingEpisodesStale',
       'aiFix', 'aiFixing', 'aiFixResult', 'aiFixFailed',
       'ok', 'cancel',
     ];
@@ -101,6 +102,37 @@ void main() {
       const int count = 3;
       final String label = 'Fix All ($count)';
       expect(label, 'Fix All (3)');
+    });
+  });
+
+  group('health check — missing_episodes fix button gated on 30-min staleness', () {
+    // Mirrors _issueCard's canFix/missingStale derivation in main.dart.
+    bool canFix(Map<String, dynamic> item) {
+      final String category = item['category'] as String? ?? '';
+      final bool isMissingEpisodes = category == 'missing_episodes';
+      final bool missingStale = isMissingEpisodes && item['stale'] == true;
+      return category != 'check_error' && (!isMissingEpisodes || missingStale);
+    }
+
+    test('fresh missing_episodes issue has no fix button', () {
+      expect(canFix(<String, dynamic>{'category': 'missing_episodes', 'stale': false}),
+          isFalse);
+    });
+
+    test('missing_episodes issue with no stale field defaults to no fix button', () {
+      expect(canFix(<String, dynamic>{'category': 'missing_episodes'}), isFalse);
+    });
+
+    test('missing_episodes issue stale after 30 min shows the fix button', () {
+      expect(canFix(<String, dynamic>{'category': 'missing_episodes', 'stale': true}),
+          isTrue);
+    });
+
+    test('other categories are unaffected by the stale field', () {
+      expect(canFix(<String, dynamic>{'category': 'torrent_error', 'stale': false}),
+          isTrue);
+      expect(canFix(<String, dynamic>{'category': 'check_error', 'stale': true}),
+          isFalse);
     });
   });
 }

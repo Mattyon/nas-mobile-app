@@ -3605,7 +3605,8 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
     final Color color = isWarning ? Colors.amber : Colors.redAccent;
     final String message = item['message'] as String? ?? '';
     final bool isMissingEpisodes = category == 'missing_episodes';
-    final bool canFix = category != 'check_error' && !isMissingEpisodes;
+    final bool missingStale = isMissingEpisodes && item['stale'] == true;
+    final bool canFix = category != 'check_error' && (!isMissingEpisodes || missingStale);
     final bool isResolving = _resolving == message;
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -3623,7 +3624,9 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> with LangAware {
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
-                  tr('healthCheckMissingEpisodesNote'),
+                  missingStale
+                      ? tr('healthCheckMissingEpisodesStale')
+                      : tr('healthCheckMissingEpisodesNote'),
                   style: TextStyle(
                       fontSize: 11,
                       fontStyle: FontStyle.italic,
