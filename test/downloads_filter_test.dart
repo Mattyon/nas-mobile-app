@@ -5,6 +5,7 @@ void main() {
 
   const Set<String> _activeStates = <String>{
     'downloading', 'forcedDL', 'metaDL', 'stalledDL', 'checkingDL', 'allocating',
+    'moving', 'checkingResumeData',
   };
   const Set<String> _failedStates = <String>{'error', 'missingFiles'};
 
@@ -189,6 +190,42 @@ void main() {
 
     test('whitespace-padded query is trimmed', () {
       expect(_filtered(items, true, '  Alpha  ').length, 1);
+    });
+  });
+
+  // Regression: a torrent being imported ('moving') or re-checked
+  // ('checkingResumeData') is still writing to disk, so it must show under
+  // Active. Both used to fall through to group 2 and disappear from the active
+  // list exactly when they were the thing consuming disk space.
+  group('import/recheck states count as active', () {
+    test('moving is grouped active, not finished', () {
+      expect(_group('moving'), 0);
+    });
+
+    test('checkingResumeData is grouped active, not finished', () {
+      expect(_group('checkingResumeData'), 0);
+    });
+
+    test('moving torrent appears in the active list', () {
+      final List<Map<String, dynamic>> items = <Map<String, dynamic>>[
+        <String, dynamic>{'name': 'Lucifer.S03', 'state': 'moving'},
+        <String, dynamic>{'name': 'Old.Thing', 'state': 'uploading'},
+      ];
+      final List<Map<String, dynamic>> active = _filtered(items, true, '');
+      expect(active.map((Map<String, dynamic> t) => t['name']), <String>['Lucifer.S03']);
+      final List<Map<String, dynamic>> finished = _filtered(items, false, '');
+      expect(finished.map((Map<String, dynamic> t) => t['name']), <String>['Old.Thing']);
+    });
+
+    test('mirrors the gateway ACTIVE_DOWNLOAD_STATES set', () {
+      // ai-gateway/app/services/qbittorrent.py: queuedDL is active there and its
+      // own group here, so it is excluded from this comparison.
+      const Set<String> gateway = <String>{
+        'downloading', 'forcedDL', 'checkingDL', 'allocating', 'metaDL',
+        'checkingResumeData', 'moving',
+      };
+      expect(_activeStates.containsAll(gateway), isTrue,
+          reason: 'app active states must cover every gateway active state');
     });
   });
 }
