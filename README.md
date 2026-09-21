@@ -63,13 +63,21 @@ duplicates only after receiving all ~56 MB.
 
 ### One-time setup (manual — Google has no API for granting API access)
 
-1. Play Console → **Setup → API access**, link a Google Cloud project.
-2. That project → **IAM & Admin → Service Accounts → Create**. No Cloud roles needed.
-3. On it: **Keys → Add key → JSON**. Download.
-4. Play Console → **Users and permissions → Invite user**, paste the service account
-   email, grant *Release to testing tracks* (and *Release to production* if wanted)
-   for `mattyzem.nas`. Propagation takes a few minutes.
-5. Store the JSON outside the repo and point the tool at it:
+Play Console's old **Setup → API access** page no longer exists — Google removed it,
+and the developer account is no longer linked to a Cloud project at all. Access now
+comes only from inviting the service account as a Play Console user (step 3).
+
+1. [console.cloud.google.com](https://console.cloud.google.com) → create a project.
+   It stays empty; it exists only to own the service account.
+2. In that project: enable
+   [androidpublisher.googleapis.com](https://console.cloud.google.com/apis/library/androidpublisher.googleapis.com),
+   then **IAM & Admin → Service Accounts → Create** (no Cloud roles needed) →
+   **Keys → Add key → JSON**. Download.
+3. Play Console → **Users and permissions → Invite new users**, paste the service
+   account email, and under *App permissions* add `mattyzem.nas` with *Release to
+   testing tracks* (and *Release to production* if wanted). Propagation takes a few
+   minutes.
+4. Store the JSON outside the repo and point the tool at it:
    ```bash
    chmod 600 ~/.config/play/nas-app.json
    export PLAY_SERVICE_ACCOUNT_JSON=~/.config/play/nas-app.json

@@ -46,20 +46,28 @@ SETUP_HELP = f"""
 Google Play API access is not set up yet. These steps are manual -- Google gives no
 API for granting API access, so nothing here can do them for you.
 
- 1. Play Console -> Setup -> API access. Link a Google Cloud project (create one if
-    you have none; it can be empty and free).
+Note: Play Console's old "Setup -> API access" page is GONE. Google removed it; you
+no longer link a Cloud project to the developer account. Access is granted purely by
+inviting the service account as a Play Console user (step 4).
 
- 2. In that Cloud project: IAM & Admin -> Service Accounts -> Create.
-    Name it e.g. "play-publisher". No Cloud roles are needed -- permissions come
-    from Play, not from GCP.
+ 1. console.cloud.google.com -> create a project (or pick one). It can be empty and
+    free; it exists only to own the service account.
 
- 3. On the service account: Keys -> Add key -> Create new key -> JSON. Download it.
+ 2. In that project, enable the API -- without this every call 403s:
+      console.cloud.google.com/apis/library/androidpublisher.googleapis.com
+    Check the project name in the top bar first, then Enable.
 
- 4. Back in Play Console -> Users and permissions -> Invite user, paste the service
-    account's email (…@….iam.gserviceaccount.com). Grant it, for {PACKAGE_NAME} only:
+ 3. IAM & Admin -> Service Accounts -> Create. Name it e.g. "play-publisher".
+    Skip the "grant this service account access to the project" step -- no Cloud
+    roles are needed, permissions come from Play, not from GCP.
+    Then on it: Keys -> Add key -> Create new key -> JSON. Download it.
+
+ 4. Play Console -> Users and permissions -> Invite new users, paste the service
+    account's email (...@....iam.gserviceaccount.com). Under App permissions add
+    {PACKAGE_NAME} and grant:
       - Release to testing tracks
       - Release to production  (only if you want this tool to reach production)
-      - View app information
+      - View app information and download bulk reports
     Permission changes take a few minutes to propagate.
 
  5. Save the JSON outside the repo, e.g. ~/.config/play/nas-app.json, chmod 600, and
