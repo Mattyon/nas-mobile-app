@@ -65,6 +65,25 @@ Play side is automated from Linux via `scripts/play_publish.py`, but iOS cannot 
 - `pubspec.yaml` has `ios: false` for launcher icons and there is no release-ready
   `ios/` runner yet.
 
+**It is a separate build job, not a flag on `play_publish.py`.** Almost nothing is
+shared: a different machine (macOS), a different signing model (certificates and
+provisioning profiles rather than a keystore), a different artefact (`.ipa` rather
+than `.aab`), a different API and a different review process. Only `pubspec.yaml`
+and the Dart source are common. Realistic shape:
+
+| | Android (done) | iOS (pending) |
+|---|---|---|
+| Build host | this Linux box | macOS only |
+| Signing | `upload-keystore.jks` + `key.properties` | certs + provisioning profiles, via Keychain |
+| Artefact | `.aab` | `.ipa` |
+| Credentials | Play service-account JSON | App Store Connect `.p8` + issuer/key ID |
+| Upload | `play_publish.py` | `xcrun altool`/`notarytool` or fastlane `deliver` |
+| Beta track | internal/alpha/beta | TestFlight (review even for external) |
+| Cost | $25 once | **$99/year** |
+
+Shared: the versionCode bump, which `play_publish.py bump` already owns and the iOS
+job should reuse rather than reimplement.
+
 If there is no Mac, a hosted macOS runner is the only route that avoids buying
 hardware — but it moves releases from "run a script locally" to "push and let CI
 build", which means this repo finally needs a git remote (it has none).
