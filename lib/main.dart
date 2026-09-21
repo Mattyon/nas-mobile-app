@@ -1817,8 +1817,13 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     return '${sec}s';
   }
 
+  // Keep in sync with the gateway's ACTIVE_DOWNLOAD_STATES
+  // (ai-gateway/app/services/qbittorrent.py). 'moving' and 'checkingResumeData' were
+  // missing here, so a torrent still writing to disk during import was grouped as
+  // finished and vanished from the active list while it was the thing filling the disk.
   static const Set<String> _activeStates = <String>{
-    'downloading', 'forcedDL', 'metaDL', 'stalledDL', 'checkingDL', 'allocating'
+    'downloading', 'forcedDL', 'metaDL', 'stalledDL', 'checkingDL', 'allocating',
+    'moving', 'checkingResumeData'
   };
   static const Set<String> _seedingStates = <String>{
     'uploading', 'forcedUP', 'stalledUP'
@@ -1846,6 +1851,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     'error': 'stateError',
     'missingFiles': 'stateMissingFiles',
     'moving': 'stateMoving',
+    'checkingResumeData': 'stateChecking',
     'unknown': 'stateUnknown',
   };
 
@@ -2185,10 +2191,35 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
         ) ??
         false;
     if (!ok) return;
+    final double freeBefore = (_disk['free_gb'] as num?)?.toDouble() ?? 0;
     try {
       await Api.I.deleteItem(_type, m['id'] as int);
       await _refresh();
+      // Radarr/Sonarr delete the files asynchronously: the API returns before the
+      // bytes are actually gone, so the refresh above usually still reports the OLD
+      // free space. Keep re-reading it in the background until it moves, so the disk
+      // bar reflects the delete without the user pulling to refresh.
+      unawaited(_pollDiskSpace(freeBefore));
     } catch (_) {}
+  }
+
+  /// Re-read /diskspace until the reported free space changes (or we give up).
+  /// Cheap: a handful of small GETs, and it stops as soon as the value moves.
+  Future<void> _pollDiskSpace(double freeBefore) async {
+    for (int i = 0; i < 8; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 1500));
+      if (!mounted) return;
+      try {
+        final Map<String, dynamic> d = await Api.I.diskspace();
+        final double now = (d['free_gb'] as num?)?.toDouble() ?? 0;
+        if (!mounted) return;
+        setState(() => _disk = d);
+        // A delete only ever frees space; stop as soon as we see it.
+        if (now > freeBefore) return;
+      } catch (_) {
+        return; // transient failure — the next manual refresh will correct it
+      }
+    }
   }
 
   @override
