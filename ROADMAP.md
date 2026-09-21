@@ -49,6 +49,27 @@
 
 ## Pending / Backlog
 
+### iOS / App Store release
+
+Wanted "soon" (asked 2026-09-21). **Not symmetric with the Android setup** — the
+Play side is automated from Linux via `scripts/play_publish.py`, but iOS cannot be:
+
+- **An iOS app cannot be built on Linux.** Xcode is required, so this needs a Mac,
+  a Mac mini, or a hosted macOS CI runner (GitHub Actions macOS, Codemagic,
+  Bitrise). This is the real blocker; everything below is paperwork.
+- **Apple Developer Program is $99/year, recurring** (Google Play was $25 once).
+- Upload automation uses an **App Store Connect API key** (`.p8` + issuer ID + key
+  ID) through `xcrun altool` / `notarytool` or fastlane `deliver`.
+- **TestFlight** is the internal-track equivalent, and external TestFlight builds
+  still go through review.
+- `pubspec.yaml` has `ios: false` for launcher icons and there is no release-ready
+  `ios/` runner yet.
+
+If there is no Mac, a hosted macOS runner is the only route that avoids buying
+hardware — but it moves releases from "run a script locally" to "push and let CI
+build", which means this repo finally needs a git remote (it has none).
+
+
 ### Library fixes (Two and a Half Men)
 - [ ] Sonarr Manual Import for S03 (51 GB downloaded but not imported)
 - [ ] Fix S09E03 import (file exists in torrent folder, not in library)
