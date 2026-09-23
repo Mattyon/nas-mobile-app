@@ -66,6 +66,27 @@ scripts/.venv/bin/python scripts/play_publish.py release   # bump + build + uplo
 Options: `--track internal\|alpha\|beta\|production` (default **internal**),
 `--notes "…"`, `--rollout 0.1` for a staged rollout, `--dry-run`, `--yes`.
 
+### Telling users a new version exists
+
+Play notifies nobody when a build goes out, and the app has no update check, so after
+a successful upload the publisher asks the NAS gateway to broadcast "a new version is
+available" to every user — in Czech or English, whichever each person's app is set to.
+
+The gateway holds the delay (default 300 s), not this script, so the laptop can be
+closed right after a release. Play needs those few minutes before it actually serves
+the new build; announcing at commit time points people at a version it will not give
+them yet.
+
+```bash
+export NAS_GATEWAY_URL=http://nas:8000    # LAN/Tailscale — /internal/* is blocked at the edge
+export WATCHDOG_TOKEN=…                   # same shared secret scripts/watchdog.sh uses
+```
+
+Without both, the release still succeeds and simply says no announcement was sent.
+`--no-announce` skips it; `--announce-delay SECONDS` overrides the gateway's default.
+It is sent once per versionCode, so re-running the publisher or promoting the same
+build to another track will not notify anyone twice.
+
 **Guards.** Production needs `--track production` *and* `--yes` — a release is
 visible within minutes and can only be superseded, never withdrawn. A versionCode
 already on Play is refused *before* the upload starts, because Play rejects

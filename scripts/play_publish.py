@@ -22,6 +22,10 @@ Safety
   Play rejects duplicates anyway, but it does so after a multi-minute upload.
 * The service-account JSON is never printed, and the filename patterns are
   gitignored.
+* After a successful upload the NAS gateway is asked to tell every app user that a
+  new version exists (set NAS_GATEWAY_URL + WATCHDOG_TOKEN; --no-announce skips it).
+  This is best-effort: the Play edit has already committed by then, so an unreachable
+  gateway prints a note rather than failing an otherwise successful release.
 
 First-time setup is manual and cannot be scripted -- see `check` output or
 README.md.
@@ -29,10 +33,12 @@ README.md.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -278,7 +284,47 @@ def cmd_upload(args) -> int:
 
     rollout = f" at {args.rollout:.0%} rollout" if args.rollout is not None else ""
     print(f"done — {name}+{uploaded} is on '{args.track}'{rollout}")
+    if not getattr(args, "no_announce", False):
+        announce_release(name, uploaded, args.track,
+                         getattr(args, "announce_delay", None))
     return 0
+
+
+def announce_release(version: str, build: int, track: str,
+                     delay_s: float | None = None) -> None:
+    """Ask the NAS gateway to tell every app user that a new build is out.
+
+    Best-effort by design. The Play edit has already committed by the time this runs,
+    so a gateway that is asleep, unreachable or behind Tailscale must not turn a
+    successful release into a failed command -- it prints why and returns.
+
+    Needs NAS_GATEWAY_URL (e.g. http://nas:8000, reachable on the LAN/Tailscale --
+    /internal/* is blocked at the Cloudflare edge) and WATCHDOG_TOKEN, the same shared
+    secret scripts/watchdog.sh uses. The gateway holds the delay, not this script, so
+    closing the laptop right after publishing does not cancel the announcement."""
+    base = os.environ.get("NAS_GATEWAY_URL", "").rstrip("/")
+    token = os.environ.get("WATCHDOG_TOKEN", "")
+    if not base or not token:
+        print("note: no announcement sent -- set NAS_GATEWAY_URL and WATCHDOG_TOKEN to enable")
+        return
+    payload: dict = {"version": version, "build": build, "track": track}
+    if delay_s is not None:
+        payload["delay_s"] = delay_s
+    req = urllib.request.Request(
+        f"{base}/internal/app-release",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "X-Watchdog-Token": token},
+        method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            body = json.loads(resp.read() or b"{}")
+    except Exception as e:
+        print(f"note: could not reach the gateway to announce the release ({e})")
+        return
+    if body.get("scheduled"):
+        print(f"users will be notified in {int(body.get('delay_s', 0))}s")
+    else:
+        print(f"note: gateway did not schedule an announcement ({body.get('reason', body)})")
 
 
 def cmd_release(args) -> int:
@@ -309,6 +355,11 @@ def main(argv=None) -> int:
                         help="staged rollout fraction, e.g. 0.1 for 10%%")
         sp.add_argument("--yes", action="store_true", help="required for production")
         sp.add_argument("--dry-run", action="store_true")
+        sp.add_argument("--no-announce", action="store_true",
+                        help="do not tell app users a new version is available")
+        sp.add_argument("--announce-delay", type=float, default=None,
+                        metavar="SECONDS",
+                        help="delay before users are notified (default: the gateway's, 300s)")
 
     u = sub.add_parser("upload", help="upload an .aab and assign it to a track")
     _upload_args(u)
