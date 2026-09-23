@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -681,6 +682,20 @@ class PosterImage extends StatelessWidget {
   const PosterImage(this.url, {super.key});
   static const double _w = 46, _h = 69;
 
+  /// Cap for the *decoded* copy, in raw pixels.
+  ///
+  /// The gateway hands out full-size artwork — a TVDB poster is typically 680x1000
+  /// and 100-200 KB — and this renders it at 46x69. Without a cap, every row decodes
+  /// a full-resolution bitmap and keeps it in memory to draw a thumbnail. 210 px wide
+  /// covers 46 logical pixels at any sane device ratio, including 4x.
+  ///
+  /// Deliberately NOT paired with `maxWidthDiskCache`: that does not replace the
+  /// stored original, it writes a second, resized file beside it. Measured on the
+  /// emulator, seven posters became fourteen files — seven originals at up to 1.2 MB
+  /// plus seven thumbnails — so it costs disk rather than saving it. The real fix for
+  /// download size is the gateway handing out a thumbnail URL in the first place.
+  static const int _decodeWidth = 210;
+
   Widget _fallback(IconData icon) =>
       Container(width: _w, height: _h, color: Colors.black26, child: Icon(icon, size: 20));
 
@@ -689,14 +704,19 @@ class PosterImage extends StatelessWidget {
     if (url == null || url!.isEmpty) return _fallback(Icons.movie_outlined);
     return ClipRRect(
       borderRadius: BorderRadius.circular(4),
-      child: Image.network(
-        url!,
+      child: CachedNetworkImage(
+        imageUrl: url!,
         width: _w,
         height: _h,
         fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => _fallback(Icons.broken_image_outlined),
-        loadingBuilder: (BuildContext c, Widget child, ImageChunkEvent? p) =>
-            p == null ? child : _fallback(Icons.image_outlined),
+        memCacheWidth: _decodeWidth,
+        // Same shapes as before, so a slow or missing image still occupies its row
+        // rather than collapsing the list.
+        errorWidget: (_, _, _) => _fallback(Icons.broken_image_outlined),
+        placeholder: (_, _) => _fallback(Icons.image_outlined),
+        // Once it is on disk the second display should be instant, not a fade.
+        fadeInDuration: const Duration(milliseconds: 150),
+        fadeOutDuration: Duration.zero,
       ),
     );
   }

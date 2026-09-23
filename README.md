@@ -10,6 +10,10 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
 - **Biometric login** — fingerprint/face unlock on app open (with remember-me).
 - **Search** movies/TV — resolves localized/**Czech** titles (e.g. *Hvězdný prach* → Stardust).
 - **Item detail** — TMDb backdrop, cast, seasons with episode quality dots, download picker.
+- **Artwork is cached to disk** (`cached_network_image`), so posters, backdrops and
+  cast photos are fetched once rather than on every cold start. Thumbnails are
+  decoded at display size: the gateway serves full-size artwork (a TVDB poster is
+  ~680x1000, up to 1.2 MB) and the list draws it at 46x69.
 - **Download** at **Fast / Balanced / Best / Czech audio** quality (AI/heuristic picks the release; goes through Radarr/Sonarr so it's imported, renamed, and subtitled).
 - **Downloads** tab — live progress / speed / ETA / state; drag to reorder; cancel with stop button.
 - **Library** tab — grid view; admins can delete a title from disk. Filter to titles
