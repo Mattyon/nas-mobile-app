@@ -11,9 +11,11 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
 - **Search** movies/TV — resolves localized/**Czech** titles (e.g. *Hvězdný prach* → Stardust).
 - **Item detail** — TMDb backdrop, cast, seasons with episode quality dots, download picker.
 - **Artwork is cached to disk** (`cached_network_image`), so posters, backdrops and
-  cast photos are fetched once rather than on every cold start. Thumbnails are
-  decoded at display size: the gateway serves full-size artwork (a TVDB poster is
-  ~680x1000, up to 1.2 MB) and the list draws it at 46x69.
+  cast photos are fetched once rather than on every cold start.
+- **Lists request a list-sized poster.** The gateway returns `poster_thumb` (~40 KB)
+  next to the full-size `poster`; rows use the former, the detail screen's full-bleed
+  hero the latter. Measured: the library list went from 4480 KB of cached images to
+  376 KB, while opening a title still pulls the 1.2 MB original.
 - **Download** at **Fast / Balanced / Best / Czech audio** quality (AI/heuristic picks the release; goes through Radarr/Sonarr so it's imported, renamed, and subtitled).
 - **Downloads** tab — live progress / speed / ETA / state; drag to reorder; cancel with stop button.
 - **Library** tab — grid view; admins can delete a title from disk. Filter to titles
