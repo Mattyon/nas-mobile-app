@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -372,10 +373,15 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
               ),
               background: heroUrl.isNotEmpty
                   ? Stack(fit: StackFit.expand, children: <Widget>[
-                      Image.network(
-                        heroUrl,
+                      CachedNetworkImage(
+                        imageUrl: heroUrl,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _fallback(context),
+                        // Full-bleed, so no downscale here — but it is the single
+                        // largest image in the app (w1280, 200-400 KB) and the one
+                        // most worth not re-fetching every time a title is opened.
+                        errorWidget: (_, __, ___) => _fallback(context),
+                        placeholder: (_, __) => _fallback(context),
+                        fadeOutDuration: Duration.zero,
                       ),
                       const DecoratedBox(
                         decoration: BoxDecoration(
@@ -679,12 +685,16 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
         ClipRRect(
           borderRadius: BorderRadius.circular(32),
           child: profilePath != null
-              ? Image.network(
-                  '${_kImg}w185$profilePath',
+              ? CachedNetworkImage(
+                  imageUrl: '${_kImg}w185$profilePath',
                   width: 64,
                   height: 64,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _avatar(context, name),
+                  // 64 logical pixels; 192 covers 3x without decoding the full w185.
+                  memCacheWidth: 192,
+                  errorWidget: (_, __, ___) => _avatar(context, name),
+                  placeholder: (_, __) => _avatar(context, name),
+                  fadeOutDuration: Duration.zero,
                 )
               : _avatar(context, name),
         ),
