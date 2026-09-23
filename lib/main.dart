@@ -752,6 +752,11 @@ class _LoginScreenState extends State<LoginScreen> with LangAware {
         await Api.I.clearRememberedCredentials();
       }
       authTick.value++;
+    } on LoginThrottled catch (e) {
+      // Not a wrong password — retrying now cannot succeed, so say how long to wait
+      // rather than sending the user round the same loop.
+      setState(() => _error =
+          tr('loginThrottled').replaceAll('{s}', '${e.retryAfterSeconds}'));
     } catch (_) {
       setState(() => _error = tr('loginFailed'));
     } finally {

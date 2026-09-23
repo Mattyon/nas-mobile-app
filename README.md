@@ -5,6 +5,8 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
 
 ## Features
 - **Login** against the gateway (`/login`) → JWT; role-aware (admin / superadmin).
+  The gateway throttles repeated failures, and the app tells them apart: a 429
+  shows how long to wait rather than the same "Login failed" as a wrong password.
 - **Biometric login** — fingerprint/face unlock on app open (with remember-me).
 - **Search** movies/TV — resolves localized/**Czech** titles (e.g. *Hvězdný prach* → Stardust).
 - **Item detail** — TMDb backdrop, cast, seasons with episode quality dots, download picker.

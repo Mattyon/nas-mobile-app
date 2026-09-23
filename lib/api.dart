@@ -8,6 +8,16 @@ const String kTmdbApiKey = '459748b4e1dbed21bf8ba93fbff3dab6';
 const String kTmdbReadAccessToken =
     'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI0NTk3NDhiNGUxZGJlZDIxYmY4YmE5M2ZiZmYzZGFiNiIsIm5iZiI6MTc4MDgyMjkzMi41NDQ5OTk4LCJzdWIiOiI2YTI1MzM5NDI5NWVhYTUyZmU1YTdiOTEiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.y5k0CO0S0805FkAiZgh62AoDycKnMNhzTS6_DUJ-fHo';
 
+/// The gateway refused a login because too many recent attempts from this client
+/// failed. Distinct from a wrong password: retrying immediately cannot succeed, so the
+/// UI has to say "wait", not "wrong credentials".
+class LoginThrottled implements Exception {
+  LoginThrottled(this.retryAfterSeconds);
+  final int retryAfterSeconds;
+  @override
+  String toString() => 'LoginThrottled(retry after ${retryAfterSeconds}s)';
+}
+
 /// Thin client for the NAS AI gateway. Singleton: Api.I
 class Api {
   Api._();
@@ -105,10 +115,26 @@ class Api {
   // ----------------------------- auth / remember-me --------------------------
 
   Future<void> login(String username, String password) async {
-    final r = await _dio.post<Map<String, dynamic>>('/login',
-        data: <String, String>{'username': username, 'password': password});
+    final Response<Map<String, dynamic>> r;
+    try {
+      r = await _dio.post<Map<String, dynamic>>('/login',
+          data: <String, String>{'username': username, 'password': password});
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 429) {
+        throw LoginThrottled(_retryAfterSeconds(e.response));
+      }
+      rethrow;
+    }
     _applyLoginResponse(r.data!);
     await _persistSession();
+  }
+
+  /// Seconds from a Retry-After header, falling back to the gateway's 60 s window if
+  /// the header is missing or unparseable.
+  static int _retryAfterSeconds(Response<dynamic>? response) {
+    final String? raw = response?.headers.value('retry-after');
+    final int? parsed = raw == null ? null : int.tryParse(raw.trim());
+    return (parsed != null && parsed > 0) ? parsed : 60;
   }
 
   void _applyLoginResponse(Map<String, dynamic> data) {
