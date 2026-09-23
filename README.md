@@ -12,7 +12,9 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
 - **Item detail** — TMDb backdrop, cast, seasons with episode quality dots, download picker.
 - **Download** at **Fast / Balanced / Best / Czech audio** quality (AI/heuristic picks the release; goes through Radarr/Sonarr so it's imported, renamed, and subtitled).
 - **Downloads** tab — live progress / speed / ETA / state; drag to reorder; cancel with stop button.
-- **Library** tab — grid view; admins can delete a title from disk.
+- **Library** tab — grid view; admins can delete a title from disk. Filter to titles
+  held in **Czech** or **English** (🇨🇿 / 🇬🇧 chips); the choice is remembered across
+  app restarts, for people who only ever want to know what exists in one language.
 - **Admin features** — media sessions (Plex + Jellyfin), speed limits, user management, speedtest, health check.
 - **Superadmin features** — AI chat (multi-conversation, server-side history; requires `ai_access` flag).
 - **English + Čeština** UI with an in-app toggle.

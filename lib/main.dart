@@ -2105,6 +2105,26 @@ class _DownloadsScreenState extends State<DownloadsScreen>
 }
 
 // ----------------------------- library --------------------------------------
+/// The language filter used by the Library tab. Top-level so it can be tested
+/// directly rather than through a pumped widget and a faked gateway.
+///
+/// `lang` is 'all', 'cs' or 'en'. 'cs' means **available in Czech**, not "Czech and
+/// nothing else": the question being answered is *do we have this in Czech*, and a
+/// title that also has an English version still answers that yes.
+///
+/// An unrecognised value returns everything. The filter is restored from storage on
+/// startup, and a stale or corrupted entry must not leave someone staring at an empty
+/// library with no obvious way back.
+List<dynamic> filterLibraryByLanguage(List<dynamic> items, String lang) {
+  if (lang != 'cs' && lang != 'en') return items;
+  final String key = lang == 'cs' ? 'on_disk_cs' : 'on_disk_en';
+  return items.where((dynamic e) {
+    final Map<String, dynamic>? m = e is Map<String, dynamic> ? e : null;
+    return m != null && m[key] == true;
+  }).toList();
+}
+
+
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
   @override
@@ -2118,10 +2138,79 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
   Map<String, dynamic> _disk = <String, dynamic>{};
   String? _error;
 
+  /// Language filter: 'all' | 'cs' | 'en'. Persisted, because the people who care
+  /// about it care about it permanently — someone who only ever wants to know what
+  /// exists in Czech should not have to re-pick it on every app start.
+  static const String _langFilterKey = 'libraryLangFilter';
+  String _lang = 'all';
+
   @override
   void initState() {
     super.initState();
+    _restoreLangFilter();
     _refresh();
+  }
+
+  Future<void> _restoreLangFilter() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? saved = prefs.getString(_langFilterKey);
+      // Guard the stored value: an older or corrupted entry must not leave the list
+      // filtering on something the UI has no chip for, which would look like an
+      // empty library with no way back.
+      if (saved != null && <String>['all', 'cs', 'en'].contains(saved)) {
+        if (mounted) setState(() => _lang = saved);
+      }
+    } catch (_) {
+      // Storage unavailable (private mode, cleared data) — 'all' is the safe default.
+    }
+  }
+
+  Future<void> _setLangFilter(String value) async {
+    setState(() => _lang = value);
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_langFilterKey, value);
+    } catch (_) {
+      // The filter still applies for this session even if it cannot be remembered.
+    }
+  }
+
+  List<dynamic> get _visibleItems => filterLibraryByLanguage(_items, _lang);
+
+  Widget _langFilterBar() {
+    final int total = _items.length;
+    final int shown = _visibleItems.length;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: Row(
+        children: <Widget>[
+          for (final List<String> opt in <List<String>>[
+            <String>['all', tr('langAll'), ''],
+            <String>['cs', tr('langCzech'), '\u{1F1E8}\u{1F1FF}'],
+            <String>['en', tr('langEnglish'), '\u{1F1EC}\u{1F1E7}'],
+          ])
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: FilterChip(
+                selected: _lang == opt[0],
+                onSelected: (_) => _setLangFilter(opt[0]),
+                visualDensity: VisualDensity.compact,
+                label: Text(opt[2].isEmpty ? opt[1] : '${opt[2]} ${opt[1]}',
+                    style: const TextStyle(fontSize: 12)),
+              ),
+            ),
+          const Spacer(),
+          if (_lang != 'all')
+            Text(
+              tr('langFilterCount')
+                  .replaceAll('{n}', '$shown')
+                  .replaceAll('{total}', '$total'),
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _refresh() async {
@@ -2262,13 +2351,36 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
             ],
           ),
         ),
+        _langFilterBar(),
         Expanded(
           child: RefreshIndicator(
             onRefresh: _refresh,
-            child: ListView.builder(
-              itemCount: _items.length,
+            child: _visibleItems.isEmpty && _items.isNotEmpty
+                ? ListView(
+                    // A plain Center would not scroll, and RefreshIndicator needs a
+                    // scrollable child for pull-to-refresh to keep working here.
+                    children: <Widget>[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(32, 64, 32, 32),
+                        child: Column(children: <Widget>[
+                          const Icon(Icons.filter_alt_off, size: 40, color: Colors.grey),
+                          const SizedBox(height: 12),
+                          Text(tr('langFilterEmpty'),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.grey)),
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: () => _setLangFilter('all'),
+                            child: Text(tr('langAll')),
+                          ),
+                        ]),
+                      ),
+                    ],
+                  )
+                : ListView.builder(
+              itemCount: _visibleItems.length,
               itemBuilder: (BuildContext context, int i) {
-                final Map<String, dynamic> m = _items[i] as Map<String, dynamic>;
+                final Map<String, dynamic> m = _visibleItems[i] as Map<String, dynamic>;
                 final bool hasFile = m['hasFile'] == true;
                 final double sizeGb = (m['size_gb'] as num?)?.toDouble() ?? 0;
                 final String yearSize = <String>[
@@ -2288,6 +2400,17 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
                           size: 14, color: hasFile ? Colors.green : Colors.grey),
                       const SizedBox(width: 4),
                       Text(yearSize),
+                      // Same flags the search results use, so what the filter selects
+                      // on is visible on the row rather than implied.
+                      if (m['on_disk_en'] == true || m['on_disk_cs'] == true) ...<Widget>[
+                        const SizedBox(width: 6),
+                        if (m['on_disk_en'] == true)
+                          const Text('\u{1F1EC}\u{1F1E7}', style: TextStyle(fontSize: 12)),
+                        if (m['on_disk_en'] == true && m['on_disk_cs'] == true)
+                          const SizedBox(width: 2),
+                        if (m['on_disk_cs'] == true)
+                          const Text('\u{1F1E8}\u{1F1FF}', style: TextStyle(fontSize: 12)),
+                      ],
                     ],
                   ),
                   trailing: Api.I.isAdmin
