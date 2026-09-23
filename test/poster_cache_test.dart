@@ -81,4 +81,39 @@ void main() {
       expect(size.height, greaterThan(0));
     });
   });
+
+  group('rowPosterUrl', () {
+    const String thumb = 'https://image.tmdb.org/t/p/w342/abc.jpg';
+    const String full = 'https://image.tmdb.org/t/p/original/abc.jpg';
+
+    test('a row prefers the thumbnail', () {
+      expect(rowPosterUrl(<String, dynamic>{'poster': full, 'poster_thumb': thumb}), thumb);
+    });
+
+    test('it falls back to the full poster when the gateway sends no thumbnail', () {
+      // An older gateway, or a provider the thumbnail rule does not recognise.
+      expect(rowPosterUrl(<String, dynamic>{'poster': full}), full);
+    });
+
+    test('an empty thumbnail is treated as absent, not as a URL', () {
+      expect(rowPosterUrl(<String, dynamic>{'poster': full, 'poster_thumb': ''}), full);
+    });
+
+    test('no artwork at all yields null rather than an empty request', () {
+      expect(rowPosterUrl(<String, dynamic>{}), isNull);
+      expect(rowPosterUrl(<String, dynamic>{'poster': '', 'poster_thumb': ''}), isNull);
+    });
+
+    test('a non-string value does not throw', () {
+      // The map comes from JSON, so it is only as typed as the gateway.
+      expect(rowPosterUrl(<String, dynamic>{'poster': 42, 'poster_thumb': null}), isNull);
+    });
+
+    test('the detail screen is deliberately not routed through this', () {
+      // Documents the split: rows get the 40 KB version, the full-bleed hero on the
+      // detail screen keeps reading `poster` directly.
+      expect(rowPosterUrl(<String, dynamic>{'poster': full, 'poster_thumb': thumb}),
+          isNot(equals(full)));
+    });
+  });
 }

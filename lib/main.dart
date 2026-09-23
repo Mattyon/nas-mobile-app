@@ -677,6 +677,20 @@ class _NotificationBellState extends State<NotificationBell> with LangAware {
 }
 
 /// Official cover art (loaded from the TMDb/TVDB URL the gateway provides).
+/// The list-sized poster for a search/library row.
+///
+/// The gateway serves `poster` as the full-size original — a TVDB poster is ~440 KB,
+/// a TMDb one up to 1.2 MB — and `poster_thumb` as the ~40 KB version meant for a
+/// 46x69 row. Falls back to the full URL so a gateway that predates `poster_thumb`
+/// still shows artwork rather than blank rows.
+String? rowPosterUrl(Map<String, dynamic> item) {
+  final Object? thumb = item['poster_thumb'];
+  if (thumb is String && thumb.isNotEmpty) return thumb;
+  final Object? full = item['poster'];
+  return full is String && full.isNotEmpty ? full : null;
+}
+
+
 class PosterImage extends StatelessWidget {
   final String? url;
   const PosterImage(this.url, {super.key});
@@ -1718,7 +1732,7 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
                       onTap: () => Navigator.push<void>(context,
                           MaterialPageRoute<void>(
                               builder: (_) => DetailScreen(item: m))),
-                      leading: PosterImage(m['poster'] as String?),
+                      leading: PosterImage(rowPosterUrl(m)),
                       title: Text(m['title']?.toString() ?? ''),
                       subtitle: Row(
                         children: <Widget>[
@@ -2460,7 +2474,7 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
                       MaterialPageRoute<void>(
                           builder: (_) => DetailScreen(
                               item: <String, dynamic>{...m, 'type': _type}))),
-                  leading: PosterImage(m['poster'] as String?),
+                  leading: PosterImage(rowPosterUrl(m)),
                   title: Text(m['title']?.toString() ?? ''),
                   subtitle: Row(
                     children: <Widget>[
