@@ -29,18 +29,41 @@ class TestVersion:
     def test_reads_semver_and_code(self, pubspec):
         assert pp.read_version(pubspec) == ("1.1.0", 12)
 
-    def test_bump_increments_only_the_code(self, pubspec):
-        assert pp.bump_version(1, pubspec) == ("1.1.0", 13)
-        assert "version: 1.1.0+13" in pubspec.read_text()
+    def test_bump_moves_the_patch_and_the_code(self, pubspec):
+        """Both, not just the code. The semver is what a person sees -- in the Store
+        and in the gateway's "new version available" push -- so holding it still made
+        consecutive releases announce themselves with identical text."""
+        assert pp.bump_version(1, pubspec) == ("1.1.1", 13)
+        assert "version: 1.1.1+13" in pubspec.read_text()
 
-    def test_bump_by_more_than_one(self, pubspec):
-        assert pp.bump_version(5, pubspec)[1] == 17
+    def test_the_patch_rolls_past_nine(self, pubspec):
+        pubspec.write_text(pubspec.read_text().replace("1.1.0+12", "1.1.9+12"))
+        assert pp.bump_version(1, pubspec)[0] == "1.1.10"
+
+    def test_major_and_minor_are_left_alone(self, pubspec):
+        """A feature release is still the author's call; this only ever moves patch."""
+        pubspec.write_text(pubspec.read_text().replace("1.1.0+12", "2.7.4+12"))
+        assert pp.bump_version(1, pubspec)[0] == "2.7.5"
+
+    def test_bump_by_more_than_one_moves_only_the_code_further(self, pubspec):
+        """--by exists to skip a burnt versionCode. That is not several releases, so
+        the patch still advances exactly one."""
+        assert pp.bump_version(5, pubspec) == ("1.1.1", 17)
+
+    def test_repeated_bumps_keep_climbing(self, pubspec):
+        assert [pp.bump_version(1, pubspec) for _ in range(3)] == [
+            ("1.1.1", 13), ("1.1.2", 14), ("1.1.3", 15)]
 
     def test_bump_leaves_the_rest_of_pubspec_alone(self, pubspec):
         before = pubspec.read_text()
         pp.bump_version(1, pubspec)
         after = pubspec.read_text()
-        assert before.replace("1.1.0+12", "1.1.0+13") == after
+        assert before.replace("1.1.0+12", "1.1.1+13") == after
+
+    def test_a_non_semver_name_is_refused_rather_than_mangled(self, pubspec):
+        pubspec.write_text(pubspec.read_text().replace("1.1.0+12", "1.1+12"))
+        with pytest.raises(SystemExit):
+            pp.bump_version(1, pubspec)
 
     def test_refuses_to_go_backwards(self, pubspec):
         """Play never accepts a reused or lowered versionCode, so neither do we."""

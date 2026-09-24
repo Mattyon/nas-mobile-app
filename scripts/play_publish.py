@@ -104,13 +104,31 @@ def read_version(pubspec: Path = PUBSPEC) -> tuple[str, int]:
 
 
 def bump_version(by: int = 1, pubspec: Path = PUBSPEC) -> tuple[str, int]:
-    """Increment the versionCode and write pubspec.yaml back."""
+    """Increment the patch component *and* the versionCode; write pubspec.yaml back.
+
+    Both move on purpose, and they move by different amounts. versionCode is what
+    Play orders builds by and must never repeat, so it takes `by` -- which exists for
+    skipping a code that has already been burnt. The semver is what a person sees, in
+    the Store listing and in the "new version available" push the gateway sends, and
+    one release is one release however many codes were skipped, so the patch always
+    goes up by exactly one.
+
+    Leaving the semver still across releases is what prompted this: every build went
+    out as 1.1.0, so the push read "Version 1.1.0 is available" for 1.1.0+15 and then
+    again, word for word, for 1.1.0+16 -- indistinguishable from a duplicate
+    notification for a version the reader already had.
+    """
     if by < 1:
         sys.exit("--by must be at least 1; versionCode may never go backwards")
     name, code = read_version(pubspec)
-    new = code + by
-    pubspec.write_text(_VERSION_RE.sub(f"version: {name}+{new}", pubspec.read_text(), count=1))
-    return name, new
+    parts = name.split(".")
+    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+        sys.exit(f"cannot bump {name!r}: expected a three-part x.y.z version")
+    major, minor, patch = (int(x) for x in parts)
+    new_name, new_code = f"{major}.{minor}.{patch + 1}", code + by
+    pubspec.write_text(
+        _VERSION_RE.sub(f"version: {new_name}+{new_code}", pubspec.read_text(), count=1))
+    return new_name, new_code
 
 
 # ── Play API ─────────────────────────────────────────────────────────────────

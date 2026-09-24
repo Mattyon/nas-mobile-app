@@ -58,13 +58,21 @@ scripts/.venv/bin/python scripts/play_publish.py release   # bump + build + uplo
 | Command | Does |
 |---|---|
 | `check` | Verifies credentials, prints the versionCode live on each track, and says whether the local one is free. Uploads nothing. |
-| `bump [--by N]` | Increments the `+N` versionCode in `pubspec.yaml`. |
+| `bump [--by N]` | Increments the **patch version and** the versionCode (`1.1.0+16` → `1.1.1+17`). `--by` only skips versionCodes — the patch always moves by exactly one, because that is one release however many codes were burnt. |
 | `build` | `flutter build appbundle --release` |
 | `upload` | Uploads the `.aab` and assigns it to a track. |
 | `release` | All three, in order. |
 
 Options: `--track internal\|alpha\|beta\|production` (default **internal**),
 `--notes "…"`, `--rollout 0.1` for a staged rollout, `--dry-run`, `--yes`.
+
+### Why the patch version moves every release
+
+The semver is what a person sees — in the Store listing, and in the "new version
+available" push the gateway sends. Holding it at `1.1.0` across builds made that push
+read "Version 1.1.0 is available" for `+15` and then identically again for `+16`,
+which is indistinguishable from a duplicate notification for a version you already
+have. So `bump` moves both numbers.
 
 ### Telling users a new version exists
 
