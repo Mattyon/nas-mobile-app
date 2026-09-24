@@ -683,6 +683,19 @@ class _NotificationBellState extends State<NotificationBell> with LangAware {
 /// a TMDb one up to 1.2 MB — and `poster_thumb` as the ~40 KB version meant for a
 /// 46x69 row. Falls back to the full URL so a gateway that predates `poster_thumb`
 /// still shows artwork rather than blank rows.
+/// Opens a URL in the browser, or whichever app claims it.
+///
+/// Returns false when nothing on the device can handle it, so the caller can say
+/// so. _LinkRow launches inline and swallows that case, which is fine for a link
+/// inside a help sheet but not for a menu item: a tap that silently does nothing
+/// is indistinguishable from a broken build.
+Future<bool> openExternalUrl(String url) async {
+  final Uri uri = Uri.parse(url);
+  if (!await canLaunchUrl(uri)) return false;
+  return launchUrl(uri, mode: LaunchMode.externalApplication);
+}
+
+
 String? rowPosterUrl(Map<String, dynamic> item) {
   final Object? thumb = item['poster_thumb'];
   if (thumb is String && thumb.isNotEmpty) return thumb;
@@ -1065,6 +1078,11 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                   } else if (v == 'health') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const HealthCheckScreen()));
+                  } else if (v == 'kuma') {
+                    if (!await openExternalUrl(Api.I.kumaUrl) && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(tr('kumaOpenFailed'))));
+                    }
                   } else if (v == 'speedtest') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const SpeedtestScreen()));
@@ -1183,6 +1201,17 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                         const Icon(Icons.health_and_safety_outlined, size: 20),
                         const SizedBox(width: 12),
                         Text(tr('healthCheck')),
+                      ]),
+                    ),
+                  if (Api.I.isAdmin)
+                    PopupMenuItem<String>(
+                      value: 'kuma',
+                      child: Row(children: <Widget>[
+                        const Icon(Icons.monitor_heart_outlined, size: 20),
+                        const SizedBox(width: 12),
+                        // Untranslated on purpose: it is a product name, and the
+                        // menu already carries 'Jellyfin URL' the same way.
+                        const Text('Uptime Kuma'),
                       ]),
                     ),
                   PopupMenuItem<String>(

@@ -33,6 +33,11 @@ class Api {
   ));
   String baseUrl = 'https://nas.mattyzem.com'; // public gateway via Cloudflare Tunnel
   String jellyfinUrl = 'https://jellyfin.mattyzem.com';
+  // Uptime Kuma's dashboard. Kuma listens on port 3001 and is not reachable from
+  // outside the Docker network, so this is a Cloudflare Tunnel hostname like the two
+  // above rather than an IP: a LAN address would not work from a phone on mobile
+  // data, and the home AP's client isolation makes it unreliable even on wifi.
+  String kumaUrl = 'https://kuma.mattyzem.com';
   String? token;
   String? username;
   String? displayName;

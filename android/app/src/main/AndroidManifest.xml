@@ -102,5 +102,17 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Required for url_launcher's canLaunchUrl on Android 11+ (API 30). Package
+             visibility hides every other app by default, so without this canLaunchUrl
+             answers false even with Chrome installed, and every external link silently
+             does nothing. That is what was happening to the help sheet's links. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="http"/>
+        </intent>
     </queries>
 </manifest>
