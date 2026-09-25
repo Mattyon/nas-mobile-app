@@ -767,22 +767,24 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
                   style:
                       const TextStyle(fontWeight: FontWeight.w600)),
               const Spacer(),
+              // A season with a gap is called out in amber rather than the muted
+              // onSurfaceVariant it used to share with ordinary secondary text —
+              // which read as "nothing to see here" — and matches the missing-episode
+              // badge on the library row, so incomplete looks the same everywhere.
               Text('$downloaded/$total',
                   style: TextStyle(
                       fontSize: 12,
-                      color: downloaded == total
-                          ? Colors.green
-                          : Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant)),
+                      fontWeight: downloaded == total
+                          ? FontWeight.normal
+                          : FontWeight.w600,
+                      color: downloaded == total ? Colors.green : Colors.amber)),
               const SizedBox(width: 4),
-              Icon(Icons.download_done,
+              Icon(
+                  downloaded == total
+                      ? Icons.download_done
+                      : Icons.warning_amber_rounded,
                   size: 14,
-                  color: downloaded == total
-                      ? Colors.green
-                      : Theme.of(context)
-                          .colorScheme
-                          .onSurfaceVariant),
+                  color: downloaded == total ? Colors.green : Colors.amber),
             ]),
           ),
         ),

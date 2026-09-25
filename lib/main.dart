@@ -683,6 +683,59 @@ class _NotificationBellState extends State<NotificationBell> with LangAware {
 /// a TMDb one up to 1.2 MB — and `poster_thumb` as the ~40 KB version meant for a
 /// 46x69 row. Falls back to the full URL so a gateway that predates `poster_thumb`
 /// still shows artwork rather than blank rows.
+/// How many episodes a library row is missing, or null when that is not knowable.
+///
+/// Null and zero are deliberately the same answer to the caller: a movie carries no
+/// episode counts at all, and a complete series carries a zero. Neither should draw a
+/// badge, and "0 missing" on a finished show is noise.
+int? missingEpisodeCount(Map<String, dynamic> item) {
+  final Object? missing = item['missing_count'];
+  return missing is int && missing > 0 ? missing : null;
+}
+
+
+/// Amber "missing episodes" marker for a library row.
+///
+/// The count leads, and it is a number rather than a translated word, so the badge is
+/// the same width in Czech as in English — the language-filter chips had to be
+/// rewritten for exactly that reason. The full sentence lives in a tooltip.
+class IncompleteBadge extends StatelessWidget {
+  const IncompleteBadge({super.key, required this.item});
+
+  final Map<String, dynamic> item;
+
+  @override
+  Widget build(BuildContext context) {
+    final int? missing = missingEpisodeCount(item);
+    if (missing == null) return const SizedBox.shrink();
+    final Object? have = item['episode_file_count'];
+    final Object? total = item['episode_count'];
+    final String tip = (have is int && total is int)
+        ? tr('episodesDownloaded')
+            .replaceAll('{have}', '$have')
+            .replaceAll('{total}', '$total')
+        : tr('episodesMissing').replaceAll('{n}', '$missing');
+    return Tooltip(
+      message: tip,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+        decoration: BoxDecoration(
+          color: Colors.amber.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
+          const Icon(Icons.warning_amber_rounded, size: 12, color: Colors.amber),
+          const SizedBox(width: 3),
+          Text('$missing',
+              style: const TextStyle(fontSize: 11, color: Colors.amber,
+                  fontWeight: FontWeight.w600)),
+        ]),
+      ),
+    );
+  }
+}
+
+
 /// Opens a URL in the browser, or whichever app claims it.
 ///
 /// Returns false when nothing on the device can handle it, so the caller can say
@@ -2521,6 +2574,10 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
                           const SizedBox(width: 2),
                         if (m['on_disk_cs'] == true)
                           const Text('\u{1F1E8}\u{1F1FF}', style: TextStyle(fontSize: 12)),
+                      ],
+                      if (missingEpisodeCount(m) != null) ...<Widget>[
+                        const SizedBox(width: 6),
+                        IncompleteBadge(item: m),
                       ],
                     ],
                   ),
