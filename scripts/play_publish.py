@@ -36,6 +36,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import urllib.request
@@ -237,11 +238,19 @@ def cmd_bump(args) -> int:
     return 0
 
 
+def flutter_bin() -> str:
+    """$FLUTTER, else `flutter` on PATH. This used to be a hard-coded path on the Mint
+    machine, which broke the first release from the Mac."""
+    found = os.environ.get("FLUTTER") or shutil.which("flutter")
+    if not found:
+        sys.exit("flutter not found: put it on PATH or set FLUTTER=/path/to/flutter")
+    return found
+
+
 def cmd_build(args) -> int:
     name, code = read_version()
     print(f"building {name}+{code} …")
-    r = subprocess.run(["/home/matty/flutter/bin/flutter", "build", "appbundle", "--release"],
-                       cwd=REPO)
+    r = subprocess.run([flutter_bin(), "build", "appbundle", "--release"], cwd=REPO)
     if r.returncode != 0:
         return r.returncode
     aab = Path(args.aab)

@@ -205,3 +205,25 @@ class TestCredentials:
         monkeypatch.setenv("PLAY_SERVICE_ACCOUNT_JSON", str(key))
         assert pp._credentials_path() == key
         assert "SUPER-SECRET-VALUE" not in capsys.readouterr().out
+
+
+class TestFlutterBin:
+    """The build step once hard-coded the Mint machine's Flutter path."""
+
+    def test_env_override_wins(self, monkeypatch):
+        monkeypatch.setenv("FLUTTER", "/opt/x/flutter")
+        assert pp.flutter_bin() == "/opt/x/flutter"
+
+    def test_falls_back_to_path(self, monkeypatch):
+        monkeypatch.delenv("FLUTTER", raising=False)
+        with patch.object(pp.shutil, "which", return_value="/usr/bin/flutter"):
+            assert pp.flutter_bin() == "/usr/bin/flutter"
+
+    def test_clear_exit_when_missing(self, monkeypatch):
+        monkeypatch.delenv("FLUTTER", raising=False)
+        with patch.object(pp.shutil, "which", return_value=None), \
+             pytest.raises(SystemExit):
+            pp.flutter_bin()
+
+    def test_no_machine_specific_path_left(self):
+        assert "/home/matty" not in Path(pp.__file__).read_text()
