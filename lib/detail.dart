@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'api.dart';
 import 'i18n.dart';
+import 'season.dart';
 
 const String _kImg = 'https://image.tmdb.org/t/p/';
 
@@ -18,9 +19,9 @@ class DetailScreen extends StatefulWidget {
 class _DetailScreenState extends State<DetailScreen> with LangAware {
   Map<String, dynamic>? _detail;
   Map<String, dynamic>? _tmdb;
+  int _tmdbId = 0;
   bool _loading = true;
   bool _overviewExpanded = false;
-  final Set<int> _expandedSeasons = <int>{};
   bool _grabbing = false;
 
   Map<String, dynamic> get _item => widget.item;
@@ -33,10 +34,18 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
 
   Future<void> _load() async {
     final bool isMovie = _item['type'] == 'movie';
-    final int tmdbId = (_item['tmdbId'] as int?) ?? 0;
+    int tmdbId = (_item['tmdbId'] as int?) ?? 0;
     final int tvdbId = (_item['tvdbId'] as int?) ?? 0;
     final String langCode = lang.value == 'cs' ? 'cs-CZ' : 'en-US';
     setState(() => _loading = true);
+    if (!isMovie && tmdbId <= 0 && tvdbId > 0) {
+      try {
+        tmdbId = await Api.I.tmdbIdForTvdb(tvdbId);
+      } catch (_) {
+        // Fall through: Sonarr's seasons still show, without TMDb's extras.
+      }
+    }
+    _tmdbId = tmdbId;
     try {
       final List<Object?> r = await Future.wait<Object?>(<Future<Object?>>[
         Api.I.itemDetail(
@@ -60,13 +69,6 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
         _detail = detail;
         _tmdb = tmdb;
         _loading = false;
-        // Auto-expand the most recent season.
-        final List<dynamic> seasons =
-            (detail['seasons'] as List<dynamic>?) ?? <dynamic>[];
-        if (seasons.isNotEmpty) {
-          _expandedSeasons
-              .add((seasons.last as Map<String, dynamic>)['season'] as int? ?? 0);
-        }
       });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
@@ -459,8 +461,12 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
     final bool hasCs = (_detail?['on_disk_cs'] ?? _item['on_disk_cs']) == true;
     final bool inLibrary = hasEn && hasCs;
 
-    final List<dynamic> seasons =
-        (_detail?['seasons'] as List<dynamic>?) ?? <dynamic>[];
+    final List<Map<String, dynamic>> seasons = isMovie
+        ? <Map<String, dynamic>>[]
+        : mergeSeasons((_tmdb?['seasons'] as List<dynamic>?) ?? <dynamic>[],
+            (_detail?['seasons'] as List<dynamic>?) ?? <dynamic>[]);
+    final int regularSeasons =
+        seasons.where((Map<String, dynamic> s) => s['season'] != 0).length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -483,9 +489,9 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
               style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
-          if (!isMovie && seasons.isNotEmpty)
+          if (regularSeasons > 0)
             Text(
-              '${seasons.length} ${seasons.length == 1 ? 'season' : 'seasons'}',
+              trCount('seasons', regularSeasons),
               style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
@@ -649,8 +655,17 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
                   .titleSmall
                   ?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
-          ...seasons.map<Widget>((dynamic s) =>
-              _seasonPanel(context, s as Map<String, dynamic>)),
+          ...seasons.map<Widget>((Map<String, dynamic> s) => SeasonTile(
+                season: s,
+                onTap: () => Navigator.push<void>(
+                    context,
+                    MaterialPageRoute<void>(
+                        builder: (_) => SeasonScreen(
+                              showTitle: _item['title'] as String? ?? '',
+                              tmdbId: _tmdbId,
+                              season: s,
+                            ))),
+              )),
         ],
 
         // ── Loading indicator ─────────────────────────────────────────────
@@ -732,156 +747,6 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
           ),
         ),
       );
-
-  Widget _seasonPanel(
-      BuildContext context, Map<String, dynamic> s) {
-    final int seasonNum = s['season'] as int? ?? 0;
-    final List<dynamic> episodes =
-        (s['episodes'] as List<dynamic>?) ?? <dynamic>[];
-    final int total = episodes.length;
-    final int downloaded = episodes
-        .where((dynamic e) =>
-            (e as Map<String, dynamic>)['has_file'] == true)
-        .length;
-    final bool expanded = _expandedSeasons.contains(seasonNum);
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 6),
-      child: Column(children: <Widget>[
-        InkWell(
-          onTap: () => setState(() => expanded
-              ? _expandedSeasons.remove(seasonNum)
-              : _expandedSeasons.add(seasonNum)),
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 16, vertical: 12),
-            child: Row(children: <Widget>[
-              Icon(
-                  expanded
-                      ? Icons.expand_less
-                      : Icons.expand_more,
-                  size: 20),
-              const SizedBox(width: 8),
-              Text('Season $seasonNum',
-                  style:
-                      const TextStyle(fontWeight: FontWeight.w600)),
-              const Spacer(),
-              // A season with a gap is called out in amber rather than the muted
-              // onSurfaceVariant it used to share with ordinary secondary text —
-              // which read as "nothing to see here" — and matches the missing-episode
-              // badge on the library row, so incomplete looks the same everywhere.
-              Text('$downloaded/$total',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: downloaded == total
-                          ? FontWeight.normal
-                          : FontWeight.w600,
-                      color: downloaded == total ? Colors.green : Colors.amber)),
-              const SizedBox(width: 4),
-              Icon(
-                  downloaded == total
-                      ? Icons.download_done
-                      : Icons.warning_amber_rounded,
-                  size: 14,
-                  color: downloaded == total ? Colors.green : Colors.amber),
-            ]),
-          ),
-        ),
-        if (expanded)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: Column(
-              children: episodes
-                  .map<Widget>((dynamic e) => _episodeRow(
-                      context, e as Map<String, dynamic>))
-                  .toList(),
-            ),
-          ),
-      ]),
-    );
-  }
-
-  Widget _episodeRow(
-      BuildContext context, Map<String, dynamic> ep) {
-    final int? n = ep['n'] as int?;
-    final String title = ep['title'] as String? ?? '';
-    final bool hasFile = ep['has_file'] as bool? ?? false;
-    final int? resolution = ep['resolution'] as int?;
-    final String? quality = ep['quality'] as String?;
-    final String airDate = ep['air_date'] as String? ?? '';
-
-    Color? dotColor;
-    if (hasFile) {
-      if (resolution != null && resolution >= 1080) {
-        dotColor = Colors.green;
-      } else if (resolution != null && resolution >= 720) {
-        dotColor = Colors.amber;
-      } else {
-        dotColor = Colors.redAccent;
-      }
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            SizedBox(
-              width: 34,
-              child: Text(
-                'E${n?.toString().padLeft(2, '0') ?? '??'}',
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurfaceVariant),
-              ),
-            ),
-            Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 13)),
-                    if (airDate.isNotEmpty)
-                      Text(airDate,
-                          style: TextStyle(
-                              fontSize: 10,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant)),
-                  ]),
-            ),
-            const SizedBox(width: 8),
-            if (dotColor != null) ...<Widget>[
-              Container(
-                width: 8,
-                height: 8,
-                margin: const EdgeInsets.only(top: 4),
-                decoration: BoxDecoration(
-                    shape: BoxShape.circle, color: dotColor),
-              ),
-              if (quality != null)
-                Padding(
-                  padding: const EdgeInsets.only(left: 4, top: 1),
-                  child: Text(quality,
-                      style:
-                          TextStyle(fontSize: 9, color: dotColor)),
-                ),
-            ] else
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Icon(Icons.radio_button_unchecked,
-                    size: 10,
-                    color: Theme.of(context).colorScheme.outline),
-              ),
-          ]),
-    );
-  }
 
   String _fmtRuntime(int minutes, bool isMovie) {
     if (!isMovie) return '${minutes}m / ep';

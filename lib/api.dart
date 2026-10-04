@@ -574,6 +574,37 @@ class Api {
     return r.data ?? <String, dynamic>{};
   }
 
+  /// One season's episodes: name, overview, still, air date, runtime, rating.
+  Future<Map<String, dynamic>> tmdbSeason(int tmdbId, int season,
+      {String language = 'en-US'}) async {
+    final r = await _tmdbDio.get<Map<String, dynamic>>(
+      '/3/tv/$tmdbId/season/$season',
+      queryParameters: <String, dynamic>{'language': language},
+      options: Options(
+          headers: <String, String>{
+            'Authorization': 'Bearer $kTmdbReadAccessToken',
+          }),
+    );
+    return r.data ?? <String, dynamic>{};
+  }
+
+  /// TMDb id of the show with this TVDB id, or 0. Sonarr knows a series by its
+  /// TVDB id and leaves tmdbId at 0 for some, which used to mean no TMDb data
+  /// (backdrop, cast, seasons) on the detail screen at all.
+  Future<int> tmdbIdForTvdb(int tvdbId) async {
+    final r = await _tmdbDio.get<Map<String, dynamic>>(
+      '/3/find/$tvdbId',
+      queryParameters: <String, dynamic>{'external_source': 'tvdb_id'},
+      options: Options(
+          headers: <String, String>{
+            'Authorization': 'Bearer $kTmdbReadAccessToken',
+          }),
+    );
+    final List<dynamic> tv =
+        (r.data?['tv_results'] as List<dynamic>?) ?? <dynamic>[];
+    return tv.isEmpty ? 0 : ((tv.first as Map<String, dynamic>)['id'] as int? ?? 0);
+  }
+
   Future<List<Map<String, dynamic>>> listCameras() async {
     final r = await _dio.get<List<dynamic>>('/cameras');
     return (r.data ?? <dynamic>[]).cast<Map<String, dynamic>>();

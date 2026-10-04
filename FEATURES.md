@@ -71,7 +71,7 @@ Complete list of everything the app and gateway can do.
 - Expandable/collapsible overview — threshold 220 characters (`Show more / Show less`)
 - Genre chips capped at 6; director credit line (movies only)
 - Cast horizontal scroll — circular actor photos with name label; capped at 15 members; falls back to initials avatar when no profile image is available
-- TV: season accordion — tap a season to expand episodes with color-coded quality dots (green = 1080p+, amber = 720p, red = SD)
+- TV: season list from TMDb for every show (Specials last); tap a season → episode list with stills, air dates, runtime, rating and synopsis; tap an episode → detail sheet. For library shows each season shows downloaded/total and each episode a color-coded quality dot (green = 1080p+, amber = 720p, red = SD)
 - Download flow raises a Czech audio fallback dialog if no Czech release is found, offering English download as an alternative
 
 ### Library

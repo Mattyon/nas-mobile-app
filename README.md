@@ -9,7 +9,11 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
   shows how long to wait rather than the same "Login failed" as a wrong password.
 - **Biometric login** — fingerprint/face unlock on app open (with remember-me).
 - **Search** movies/TV — resolves localized/**Czech** titles (e.g. *Hvězdný prach* → Stardust).
-- **Item detail** — TMDb backdrop, cast, seasons with episode quality dots, download picker.
+- **Item detail** — TMDb backdrop, cast, download picker, and a **season list for every
+  show**, not only ones in the library. Tap a season for its episodes (still, title, air
+  date, runtime, rating, synopsis), tap an episode for the full detail. Library shows add
+  downloaded/total per season and a quality dot per episode; Czech falls back to English
+  per field where TMDb has no translation.
 - **Artwork is cached to disk** (`cached_network_image`), so posters, backdrops and
   cast photos are fetched once rather than on every cold start.
 - **Lists request a list-sized poster.** The gateway returns `poster_thumb` (~40 KB)
@@ -130,6 +134,7 @@ cannot create a listing.
 
 ## Project layout
 - `lib/main.dart` — UI: auth gate, login, Search / Downloads / Library / Admin / Help screens.
-- `lib/detail.dart` — Item detail screen (TMDb backdrop, cast, seasons, download picker).
+- `lib/detail.dart` — Item detail screen (TMDb backdrop, cast, season list, download picker).
+- `lib/season.dart` — Season screen, episode sheet, and the TMDb + Sonarr season/episode merge.
 - `lib/api.dart` — gateway client (Dio) + token storage + biometric/remember-me auth.
 - `lib/i18n.dart` — English/Czech strings, `tr()`, `LangAware` mixin, language toggle.

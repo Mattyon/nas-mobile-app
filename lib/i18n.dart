@@ -182,6 +182,22 @@ const Map<String, Map<String, String>> _strings = {
     'langMismatch': 'Wrong language',
     'cast': 'Cast',
     'seasons': 'Seasons',
+    'seasonN': 'Season {n}',
+    'specials': 'Specials',
+    'episodeN': 'Episode {n}',
+    'episodesOne': '1 episode',
+    'episodesFew': '{n} episodes',
+    'episodesMany': '{n} episodes',
+    'seasonsOne': '1 season',
+    'seasonsFew': '{n} seasons',
+    'seasonsMany': '{n} seasons',
+    'airsOn': 'Airs {date}',
+    'notYetAired': 'Not aired yet',
+    'onDiskQuality': 'On disk · {q}',
+    'notOnDisk': 'Not on disk',
+    'noOverview': 'No description yet.',
+    'seasonLoadFailed': "Couldn't load the episodes.",
+    'retry': 'Retry',
     'showMore': 'Show more',
     'showLess': 'Show less',
     'director': 'Director',
@@ -417,6 +433,22 @@ const Map<String, Map<String, String>> _strings = {
     'langMismatch': 'Chybný jazyk',
     'cast': 'Obsazení',
     'seasons': 'Sezóny',
+    'seasonN': '{n}. sezóna',
+    'specials': 'Speciály',
+    'episodeN': '{n}. díl',
+    'episodesOne': '1 díl',
+    'episodesFew': '{n} díly',
+    'episodesMany': '{n} dílů',
+    'seasonsOne': '1 sezóna',
+    'seasonsFew': '{n} sezóny',
+    'seasonsMany': '{n} sezón',
+    'airsOn': 'Vysílání {date}',
+    'notYetAired': 'Zatím nevysíláno',
+    'onDiskQuality': 'Na disku · {q}',
+    'notOnDisk': 'Není na disku',
+    'noOverview': 'Zatím bez popisu.',
+    'seasonLoadFailed': 'Díly se nepodařilo načíst.',
+    'retry': 'Zkusit znovu',
     'showMore': 'Zobrazit více',
     'showLess': 'Zobrazit méně',
     'director': 'Režisér',
@@ -477,6 +509,14 @@ const Map<String, Map<String, String>> _strings = {
 };
 
 String tr(String key) => _strings[lang.value]?[key] ?? key;
+
+/// A counted noun: trCount('episodes', 3) → "3 episodes" / "3 díly". Czech has
+/// three forms (1 díl, 2–4 díly, 5+ dílů), so each counted noun has
+/// `<base>One`, `<base>Few` and `<base>Many` keys.
+String trCount(String base, int n) {
+  final String form = n == 1 ? 'One' : (n >= 2 && n <= 4) ? 'Few' : 'Many';
+  return tr('$base$form').replaceAll('{n}', '$n');
+}
 
 void toggleLang() => lang.value = lang.value == 'en' ? 'cs' : 'en';
 
