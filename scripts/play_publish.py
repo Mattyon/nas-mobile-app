@@ -103,8 +103,22 @@ def read_version(pubspec: Path = PUBSPEC) -> tuple[str, int]:
     return m.group(1), int(m.group(2))
 
 
+def next_semver(name: str) -> str:
+    """The version a person sees after one release: the patch climbs 0..9, then
+    rolls into the minor -- 1.1.8 -> 1.1.9 -> 1.2.0 -> 1.2.1. The owner's scheme
+    (2026-10-04): single-digit patches, the minor counting groups of ten releases.
+    A patch already past 9 (from before the rule) rolls over on its next release.
+    Major is never touched; that stays a deliberate, manual edit."""
+    parts = name.split(".")
+    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+        sys.exit(f"cannot bump {name!r}: expected a three-part x.y.z version")
+    major, minor, patch = (int(x) for x in parts)
+    return f"{major}.{minor + 1}.0" if patch >= 9 else f"{major}.{minor}.{patch + 1}"
+
+
 def bump_version(by: int = 1, pubspec: Path = PUBSPEC) -> tuple[str, int]:
-    """Increment the patch component *and* the versionCode; write pubspec.yaml back.
+    """Move the semver one release on (see next_semver) *and* the versionCode by
+    `by`; write pubspec.yaml back.
 
     Both move on purpose, and they move by different amounts. versionCode is what
     Play orders builds by and must never repeat, so it takes `by` -- which exists for
@@ -121,11 +135,7 @@ def bump_version(by: int = 1, pubspec: Path = PUBSPEC) -> tuple[str, int]:
     if by < 1:
         sys.exit("--by must be at least 1; versionCode may never go backwards")
     name, code = read_version(pubspec)
-    parts = name.split(".")
-    if len(parts) != 3 or not all(p.isdigit() for p in parts):
-        sys.exit(f"cannot bump {name!r}: expected a three-part x.y.z version")
-    major, minor, patch = (int(x) for x in parts)
-    new_name, new_code = f"{major}.{minor}.{patch + 1}", code + by
+    new_name, new_code = next_semver(name), code + by
     pubspec.write_text(
         _VERSION_RE.sub(f"version: {new_name}+{new_code}", pubspec.read_text(), count=1))
     return new_name, new_code

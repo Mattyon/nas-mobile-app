@@ -36,14 +36,27 @@ class TestVersion:
         assert pp.bump_version(1, pubspec) == ("1.1.1", 13)
         assert "version: 1.1.1+13" in pubspec.read_text()
 
-    def test_the_patch_rolls_past_nine(self, pubspec):
+    def test_after_patch_nine_the_minor_moves(self, pubspec):
+        """The owner's scheme: patches 0..9, then the next minor starts at .0."""
         pubspec.write_text(pubspec.read_text().replace("1.1.0+12", "1.1.9+12"))
-        assert pp.bump_version(1, pubspec)[0] == "1.1.10"
+        assert pp.bump_version(1, pubspec) == ("1.2.0", 13)
 
-    def test_major_and_minor_are_left_alone(self, pubspec):
-        """A feature release is still the author's call; this only ever moves patch."""
-        pubspec.write_text(pubspec.read_text().replace("1.1.0+12", "2.7.4+12"))
-        assert pp.bump_version(1, pubspec)[0] == "2.7.5"
+    @pytest.mark.parametrize("before,after", [
+        ("1.1.0", "1.1.1"), ("1.1.8", "1.1.9"), ("1.1.9", "1.2.0"),
+        ("1.2.0", "1.2.1"), ("2.7.4", "2.7.5"), ("1.9.9", "1.10.0"),
+        ("1.1.10", "1.2.0"),   # a two-digit patch from before the rule rolls over
+    ])
+    def test_next_semver(self, before, after):
+        assert pp.next_semver(before) == after
+
+    def test_major_is_left_alone(self, pubspec):
+        """A major release is the author's call; the bump never moves it."""
+        pubspec.write_text(pubspec.read_text().replace("1.1.0+12", "2.7.9+12"))
+        assert pp.bump_version(1, pubspec)[0] == "2.8.0"
+
+    def test_ten_releases_from_x_y_0_reach_the_next_minor(self, pubspec):
+        names = [pp.bump_version(1, pubspec)[0] for _ in range(10)]
+        assert names == [f"1.1.{i}" for i in range(1, 10)] + ["1.2.0"]
 
     def test_bump_by_more_than_one_moves_only_the_code_further(self, pubspec):
         """--by exists to skip a burnt versionCode. That is not several releases, so

@@ -62,13 +62,23 @@ scripts/.venv/bin/python scripts/play_publish.py release   # bump + build + uplo
 | Command | Does |
 |---|---|
 | `check` | Verifies credentials, prints the versionCode live on each track, and says whether the local one is free. Uploads nothing. |
-| `bump [--by N]` | Increments the **patch version and** the versionCode (`1.1.0+16` → `1.1.1+17`). `--by` only skips versionCodes — the patch always moves by exactly one, because that is one release however many codes were burnt. |
+| `bump [--by N]` | Moves the **version one release on and** the versionCode (`1.1.0+16` → `1.1.1+17`; `1.1.9` → `1.2.0`, see below). `--by` only skips versionCodes — the version always moves by exactly one release, however many codes were burnt. |
 | `build` | `flutter build appbundle --release` |
 | `upload` | Uploads the `.aab` and assigns it to a track. |
 | `release` | All three, in order. |
 
 Options: `--track internal\|alpha\|beta\|production` (default **internal**),
 `--notes "…"`, `--rollout 0.1` for a staged rollout, `--dry-run`, `--yes`.
+
+### Version numbers: patch 0–9, then the next minor
+
+Every release moves the version by one, and the patch stays a single digit:
+`1.1.1`, `1.1.2` … `1.1.9`, then `1.2.0`, `1.2.1` … `1.2.9`, then `1.3.0`. The minor
+therefore counts groups of ten releases. `bump` (and so `release`) applies this
+itself (`next_semver()` in `play_publish.py`); a patch already past 9 from before the
+rule rolls over on its next release. The major is never moved by the tool — that is a
+deliberate manual edit of `pubspec.yaml`. The versionCode after `+` is separate and
+just climbs by one per upload. (Scheme set by the owner on 2026-10-04.)
 
 ### Why the patch version moves every release
 
