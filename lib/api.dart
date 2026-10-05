@@ -381,30 +381,68 @@ class Api {
     String displayname = '',
     bool isAdmin = false,
     bool isAiAccess = false,
+    bool canDownload = true,
   }) async {
-    await _dio.post<dynamic>('/users', data: <String, dynamic>{
-      'username': username,
-      'password': password,
-      'displayname': displayname,
-      'is_admin': isAdmin,
-      'is_ai_access': isAiAccess,
-    });
+    await _dio.post<dynamic>('/users', data: createUserBody(
+      username: username,
+      password: password,
+      displayname: displayname,
+      isAdmin: isAdmin,
+      isAiAccess: isAiAccess,
+      canDownload: canDownload,
+    ));
   }
 
+  /// [canDownload] null leaves the Jellyfin download permission unchanged.
   Future<void> updateUser(
     String username, {
     String? password,
     String displayname = '',
     bool isAdmin = false,
     bool isAiAccess = false,
+    bool? canDownload,
   }) async {
-    await _dio.put<dynamic>('/users/$username', data: <String, dynamic>{
-      if (password != null) 'password': password,
-      'displayname': displayname,
-      'is_admin': isAdmin,
-      'is_ai_access': isAiAccess,
-    });
+    await _dio.put<dynamic>('/users/$username', data: updateUserBody(
+      password: password,
+      displayname: displayname,
+      isAdmin: isAdmin,
+      isAiAccess: isAiAccess,
+      canDownload: canDownload,
+    ));
   }
+
+  static Map<String, dynamic> createUserBody({
+    required String username,
+    required String password,
+    String displayname = '',
+    bool isAdmin = false,
+    bool isAiAccess = false,
+    bool canDownload = true,
+  }) =>
+      <String, dynamic>{
+        'username': username,
+        'password': password,
+        'displayname': displayname,
+        'is_admin': isAdmin,
+        'is_ai_access': isAiAccess,
+        'can_download': canDownload,
+      };
+
+  static Map<String, dynamic> updateUserBody({
+    String? password,
+    String displayname = '',
+    bool isAdmin = false,
+    bool isAiAccess = false,
+    bool? canDownload,
+  }) =>
+      <String, dynamic>{
+        if (password != null) 'password': password,
+        'displayname': displayname,
+        'is_admin': isAdmin,
+        'is_ai_access': isAiAccess,
+        // Absent, not null: the gateway reads a missing field as "unchanged".
+        if (canDownload != null) 'can_download': canDownload,
+      };
 
   Future<void> deleteUser(String username) async {
     await _dio.delete<dynamic>('/users/$username');

@@ -13,6 +13,7 @@ import 'package:workmanager/workmanager.dart';
 import 'api.dart';
 import 'detail.dart';
 import 'i18n.dart';
+import 'user_permissions.dart';
 
 final ValueNotifier<int> authTick = ValueNotifier<int>(0);
 final ValueNotifier<int> selectedTab = ValueNotifier<int>(0); // 0=Search 1=Downloads 2=Library
@@ -3029,6 +3030,10 @@ class _UsersScreenState extends State<UsersScreen> with LangAware {
     final TextEditingController passCtrl = TextEditingController();
     bool isAdmin = (existing?['groups'] as List<dynamic>?)?.contains('admins') ?? false;
     bool isAiAccess = (existing?['is_ai_access'] as bool?) ?? false;
+    final bool? initialDownload =
+        isEdit ? (existing['can_download'] as bool?) : true;
+    bool canDownload = initialDownload ?? true;
+    bool downloadTouched = false;
     bool saving = false;
     String? errorMsg;
 
@@ -3072,6 +3077,16 @@ class _UsersScreenState extends State<UsersScreen> with LangAware {
                     value: isAiAccess,
                     onChanged: saving ? null : (bool? v) => ss(() => isAiAccess = v ?? false),
                   ),
+                DownloadPermissionTile(
+                  value: canDownload,
+                  unknown: isEdit && initialDownload == null && !downloadTouched,
+                  onChanged: saving
+                      ? null
+                      : (bool v) => ss(() {
+                            canDownload = v;
+                            downloadTouched = true;
+                          }),
+                ),
                 if (errorMsg != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
@@ -3102,6 +3117,11 @@ class _UsersScreenState extends State<UsersScreen> with LangAware {
                             password: passCtrl.text.isEmpty ? null : passCtrl.text,
                             isAdmin: isAdmin,
                             isAiAccess: isAiAccess,
+                            canDownload: downloadToSend(
+                                isEdit: true,
+                                initial: initialDownload,
+                                current: canDownload,
+                                touched: downloadTouched),
                           );
                         } else {
                           await Api.I.createUser(
@@ -3110,6 +3130,7 @@ class _UsersScreenState extends State<UsersScreen> with LangAware {
                             displayname: dispCtrl.text.trim(),
                             isAdmin: isAdmin,
                             isAiAccess: isAiAccess,
+                            canDownload: canDownload,
                           );
                         }
                         if (ctx2.mounted) Navigator.of(ctx2).pop(true);
@@ -3199,6 +3220,14 @@ class _UsersScreenState extends State<UsersScreen> with LangAware {
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: <Widget>[
+                            // Only the exception is marked: downloading is the default.
+                            if (u['can_download'] == false)
+                              Tooltip(
+                                message: tr('noDownloads'),
+                                child: Icon(Icons.file_download_off_outlined,
+                                    size: 18,
+                                    color: Theme.of(context).colorScheme.outline),
+                              ),
                             if (admin)
                               Chip(
                                 label: Text(tr('admin'),
