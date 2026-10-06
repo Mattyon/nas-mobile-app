@@ -16,6 +16,14 @@ class LoginThrottled implements Exception {
   String toString() => 'LoginThrottled(retry after ${retryAfterSeconds}s)';
 }
 
+/// The connect timeout for gateway requests. In a browser dio's adapter counts it until
+/// the response *headers* arrive (dio_web_adapter adapter_impl.dart), so every endpoint
+/// that answers only when its work is done -- /speedtest (15-55 s), the AI chat, grabs --
+/// failed in the web version after 15 s. There the browser handles connection failures
+/// itself and each request's receive timeout is the limit; on Android 15 s stays.
+Duration? connectTimeoutFor({required bool web}) =>
+    web ? null : const Duration(seconds: 15);
+
 /// Thin client for the NAS AI gateway. Singleton: Api.I
 class Api {
   Api._();
@@ -65,7 +73,7 @@ class Api {
   void _build() {
     _dio = Dio(BaseOptions(
       baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: 15),
+      connectTimeout: connectTimeoutFor(web: kIsWeb),
       receiveTimeout: const Duration(seconds: 90),
     ));
     if (token != null) _dio.options.headers['Authorization'] = 'Bearer $token';
