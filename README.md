@@ -70,8 +70,11 @@ move, so a failed build never leaves half an app online.
 
 What differs on the web (`kIsWeb`):
 
-- **No Android notifications, WorkManager or foreground service** — the in-app
-  notification list covers it.
+- **No Android notifications, WorkManager or foreground service.** Instead the menu has
+  **Notifications on this device** (Web Push: `web/push.js`, `web/push-sw.js`,
+  `lib/web_push*.dart`; the gateway's `web_push.py` sends). On an iPhone it works only in
+  the app added to the Home Screen, and the dialog says so. Flutter's own service worker
+  is not registered (`web/flutter_bootstrap.js`): it would take the `/app/` scope over.
 - **No Face ID / fingerprint, and the password is never stored** in the browser; only
   the login token is kept. When it expires, sign in again.
 - **TMDb goes through the gateway** (`GET /tmdb/...`, key server-side). This is true on

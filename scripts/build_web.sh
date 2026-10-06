@@ -60,6 +60,8 @@ H=$(sha256sum "$W/main.dart.js" | cut -c1-12)
 mv "$W/main.dart.js" "$W/main.$H.dart.js"
 sed -i "s#main\.dart\.js#main.$H.dart.js#g" "$W/flutter_bootstrap.js"
 sed -i "s#src=\"flutter_bootstrap\.js\"#src=\"flutter_bootstrap.js?v=$H\"#" "$W/index.html"
+P=$(sha256sum "$W/push.js" | cut -c1-12)   # web push helper (web/push.js), same reason
+sed -i "s#src=\"push\.js\"#src=\"push.js?v=$P\"#" "$W/index.html"
 grep -q "main.$H.dart.js" "$W/flutter_bootstrap.js" && grep -q "flutter_bootstrap.js?v=$H" "$W/index.html" \
     || { echo "cache-busting rewrite failed"; exit 1; }
 rm -rf "$DEST.new"; cp -a "$REPO/build/web" "$DEST.new"

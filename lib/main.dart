@@ -15,6 +15,7 @@ import 'api.dart';
 import 'detail.dart';
 import 'i18n.dart';
 import 'user_permissions.dart';
+import 'web_push.dart';
 
 final ValueNotifier<int> authTick = ValueNotifier<int>(0);
 final ValueNotifier<int> selectedTab = ValueNotifier<int>(0); // 0=Search 1=Downloads 2=Library
@@ -1144,6 +1145,8 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                       ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text(tr('kumaOpenFailed'))));
                     }
+                  } else if (v == 'webpush') {
+                    await showWebPushDialog(context);
                   } else if (v == 'speedtest') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const SpeedtestScreen()));
@@ -1300,6 +1303,16 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                       Text(mode == ThemeMode.dark ? tr('lightMode') : tr('darkMode')),
                     ]),
                   ),
+                  // Web build only: the Android app gets its pushes through ntfy.
+                  if (kIsWeb)
+                    PopupMenuItem<String>(
+                      value: 'webpush',
+                      child: Row(children: <Widget>[
+                        const Icon(Icons.notifications_active_outlined, size: 20),
+                        const SizedBox(width: 12),
+                        Text(tr('webPush')),
+                      ]),
+                    ),
                   PopupMenuItem<String>(
                     value: 'help',
                     child: Row(children: <Widget>[
