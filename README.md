@@ -49,6 +49,39 @@ flutter install            # or: adb install build/app/outputs/flutter-apk/app-d
 For a smaller, optimized build use `flutter build apk --release` (needs a signing config
 for Play, but a release APK can be sideloaded as-is).
 
+## Web version (iPhone without the App Store)
+
+The same code builds for the browser, and the NAS gateway serves it at
+**`https://nas.mattyzem.com/app/`** (same origin as the API, so no CORS). On an iPhone:
+open it in Safari → Share → **Add to Home Screen**; it then opens full-screen with its
+own icon, like an app. No Apple developer account involved.
+
+Build and publish **on the NAS** (the repo is cloned at `/mnt/cache/appdata/nas-mobile-app`):
+
+```bash
+scripts/build_web.sh            # analyze + all tests + build + publish
+scripts/build_web.sh --no-test  # build + publish only
+```
+
+It runs Flutter 3.47.6 (SDK in `/mnt/cache/appdata/flutter-sdk`) in a throwaway
+Ubuntu 24.04 container — Debian 12 made `flutter_tester` segfault mid-suite — builds
+with `--base-href /app/`, and swaps the result into the gateway's `config/webapp` in one
+move, so a failed build never leaves half an app online.
+
+What differs on the web (`kIsWeb`):
+
+- **No Android notifications, WorkManager or foreground service** — the in-app
+  notification list covers it.
+- **No Face ID / fingerprint, and the password is never stored** in the browser; only
+  the login token is kept. When it expires, sign in again.
+- **TMDb goes through the gateway** (`GET /tmdb/...`, key server-side). This is true on
+  Android too now: a web bundle is public, so the app no longer ships the TMDb key at
+  all (`test/tmdb_test.dart` guards that).
+
+Cloudflare sets `Cache-Control: max-age=14400` on `.js` files regardless of what the
+gateway sends (zone setting *Browser Cache TTL*), so after a publish a phone can keep
+the previous version for up to 4 hours unless that setting is *Respect Existing Headers*.
+
 ## Releasing to Google Play
 
 `scripts/play_publish.py` drives the Google Play Developer API directly. Chosen over
@@ -146,5 +179,5 @@ cannot create a listing.
 - `lib/main.dart` — UI: auth gate, login, Search / Downloads / Library / Admin / Help screens.
 - `lib/detail.dart` — Item detail screen (TMDb backdrop, cast, season list, download picker).
 - `lib/season.dart` — Season screen, episode sheet, and the TMDb + Sonarr season/episode merge.
-- `lib/api.dart` — gateway client (Dio) + token storage + biometric/remember-me auth.
+- `lib/api.dart` — gateway client (Dio) + token storage + biometric/remember-me auth; TMDb via the gateway's `/tmdb` proxy.
 - `lib/i18n.dart` — English/Czech strings, `tr()`, `LangAware` mixin, language toggle.

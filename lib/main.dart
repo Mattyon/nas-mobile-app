@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -48,6 +49,7 @@ Future<void> _initNotifications() async {
 }
 
 Future<void> _notifyDownloadDone(String name) async {
+  if (kIsWeb) return;
   await _flnp.show(
     id: name.hashCode.abs() % 100000,
     title: 'Download complete',
@@ -66,6 +68,7 @@ Future<void> _notifyDownloadDone(String name) async {
 }
 
 Future<void> _showSystemNotification(Map<String, dynamic> n) async {
+  if (kIsWeb) return;
   final bool cs = lang.value == 'cs';
   final String title = (cs
           ? (n['title_cs']?.toString() ?? n['title']?.toString())
@@ -373,14 +376,18 @@ Future<void> _startPushService() async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  // The web build (served by the gateway at /app, e.g. an iPhone home-screen app) has
+  // no Android notifications, WorkManager or foreground service; the in-app
+  // notification list covers it. dart:io's Platform must not even be asked there.
+  final bool android = !kIsWeb && Platform.isAndroid;
+  if (!kIsWeb) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   await Api.I.init();
-  if (Platform.isAndroid) await _initNotifications();
+  if (android) await _initNotifications();
   final SharedPreferences prefs = await SharedPreferences.getInstance();
   final bool isDark = prefs.getBool('darkMode') ?? true;
   themeMode.value = isDark ? ThemeMode.dark : ThemeMode.light;
   lang.value = prefs.getString('app_lang') ?? 'en';
-  if (Platform.isAndroid) {
+  if (android) {
     await Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
     await Workmanager().registerPeriodicTask(
       'nas_notif_periodic',

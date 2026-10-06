@@ -1,12 +1,10 @@
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const String kTmdbApiKey = '459748b4e1dbed21bf8ba93fbff3dab6';
-const String kTmdbReadAccessToken =
-    'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI0NTk3NDhiNGUxZGJlZDIxYmY4YmE5M2ZiZmYzZGFiNiIsIm5iZiI6MTc4MDgyMjkzMi41NDQ5OTk4LCJzdWIiOiI2YTI1MzM5NDI5NWVhYTUyZmU1YTdiOTEiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.y5k0CO0S0805FkAiZgh62AoDycKnMNhzTS6_DUJ-fHo';
 
 /// The gateway refused a login because too many recent attempts from this client
 /// failed. Distinct from a wrong password: retrying immediately cannot succeed, so the
@@ -26,11 +24,6 @@ class Api {
   final FlutterSecureStorage _secure = const FlutterSecureStorage();
   final LocalAuthentication _localAuth = LocalAuthentication();
   late Dio _dio;
-  final Dio _tmdbDio = Dio(BaseOptions(
-    baseUrl: 'https://api.themoviedb.org',
-    connectTimeout: const Duration(seconds: 15),
-    receiveTimeout: const Duration(seconds: 30),
-  ));
   String baseUrl = 'https://nas.mattyzem.com'; // public gateway via Cloudflare Tunnel
   String jellyfinUrl = 'https://jellyfin.mattyzem.com';
   // Uptime Kuma's dashboard. Kuma listens on port 3001 and is not reachable from
@@ -174,6 +167,13 @@ class Api {
 
   /// Saves credentials for remember-me. Call after a successful login.
   Future<void> saveRememberedCredentials(String username, String password) async {
+    // In a browser "secure storage" is localStorage with a key next to it: no place for
+    // a password. The web version keeps only the login token (and the username for the
+    // login form); when the token expires, the user signs in again. No Android Auto there.
+    if (kIsWeb) {
+      await _secure.write(key: 'rememberUser', value: username);
+      return;
+    }
     final exp = DateTime.now()
         .add(const Duration(days: 365))
         .millisecondsSinceEpoch;
@@ -266,6 +266,7 @@ class Api {
   }
 
   Future<bool> canUseBiometrics() async {
+    if (kIsWeb) return false;   // no Face ID / fingerprint API in a browser
     try {
       return await _localAuth.isDeviceSupported();
     } catch (_) {
@@ -582,32 +583,24 @@ class Api {
 
   Future<Map<String, dynamic>> tmdbMovieDetails(int tmdbId,
       {String language = 'en-US'}) async {
-    final r = await _tmdbDio.get<Map<String, dynamic>>(
-      '/3/movie/$tmdbId',
+    final r = await _dio.get<Map<String, dynamic>>(
+      '/tmdb/movie/$tmdbId',
       queryParameters: <String, dynamic>{
         'append_to_response': 'credits',
         'language': language,
       },
-      options: Options(
-          headers: <String, String>{
-            'Authorization': 'Bearer $kTmdbReadAccessToken',
-          }),
     );
     return r.data ?? <String, dynamic>{};
   }
 
   Future<Map<String, dynamic>> tmdbTvDetails(int tmdbId,
       {String language = 'en-US'}) async {
-    final r = await _tmdbDio.get<Map<String, dynamic>>(
-      '/3/tv/$tmdbId',
+    final r = await _dio.get<Map<String, dynamic>>(
+      '/tmdb/tv/$tmdbId',
       queryParameters: <String, dynamic>{
         'append_to_response': 'credits',
         'language': language,
       },
-      options: Options(
-          headers: <String, String>{
-            'Authorization': 'Bearer $kTmdbReadAccessToken',
-          }),
     );
     return r.data ?? <String, dynamic>{};
   }
@@ -615,13 +608,9 @@ class Api {
   /// One season's episodes: name, overview, still, air date, runtime, rating.
   Future<Map<String, dynamic>> tmdbSeason(int tmdbId, int season,
       {String language = 'en-US'}) async {
-    final r = await _tmdbDio.get<Map<String, dynamic>>(
-      '/3/tv/$tmdbId/season/$season',
+    final r = await _dio.get<Map<String, dynamic>>(
+      '/tmdb/tv/$tmdbId/season/$season',
       queryParameters: <String, dynamic>{'language': language},
-      options: Options(
-          headers: <String, String>{
-            'Authorization': 'Bearer $kTmdbReadAccessToken',
-          }),
     );
     return r.data ?? <String, dynamic>{};
   }
@@ -630,13 +619,9 @@ class Api {
   /// TVDB id and leaves tmdbId at 0 for some, which used to mean no TMDb data
   /// (backdrop, cast, seasons) on the detail screen at all.
   Future<int> tmdbIdForTvdb(int tvdbId) async {
-    final r = await _tmdbDio.get<Map<String, dynamic>>(
-      '/3/find/$tvdbId',
+    final r = await _dio.get<Map<String, dynamic>>(
+      '/tmdb/find/$tvdbId',
       queryParameters: <String, dynamic>{'external_source': 'tvdb_id'},
-      options: Options(
-          headers: <String, String>{
-            'Authorization': 'Bearer $kTmdbReadAccessToken',
-          }),
     );
     final List<dynamic> tv =
         (r.data?['tv_results'] as List<dynamic>?) ?? <dynamic>[];

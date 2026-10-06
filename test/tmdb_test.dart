@@ -1,44 +1,46 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nas_app/api.dart';
 
 void main() {
-  group('TMDB — API key format', () {
-    test('kTmdbApiKey is exactly 32 characters', () {
-      expect(kTmdbApiKey.length, 32);
+  // The app used to call api.themoviedb.org with the key and read token compiled in.
+  // A web build is public (anyone can read main.dart.js), so TMDb now goes through the
+  // gateway (GET /tmdb/..., key kept server-side). These pin that it stays that way.
+  group('TMDB — no key in the app, calls go through the gateway', () {
+    final String api = File('lib/api.dart').readAsStringSync();
+    final List<File> sources = Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((File f) => f.path.endsWith('.dart'))
+        .toList();
+
+    test('no source file calls TMDb directly', () {
+      for (final File f in sources) {
+        expect(f.readAsStringSync().contains('api.themoviedb.org'), isFalse,
+            reason: '${f.path} talks to TMDb directly');
+      }
     });
 
-    test('kTmdbApiKey is a valid lowercase hex string', () {
-      final RegExp hexPattern = RegExp(r'^[a-f0-9]+$');
-      expect(hexPattern.hasMatch(kTmdbApiKey), isTrue,
-          reason: 'TMDB API key must be lowercase hex');
+    test('no TMDb key or read token anywhere in lib/', () {
+      final RegExp key = RegExp(r"'[0-9a-f]{32}'");
+      final RegExp jwt = RegExp(r"'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'");
+      for (final File f in sources) {
+        final String src = f.readAsStringSync();
+        expect(key.hasMatch(src), isFalse, reason: '${f.path} has a 32-hex key');
+        expect(jwt.hasMatch(src), isFalse, reason: '${f.path} has a JWT');
+      }
     });
 
-    test('kTmdbApiKey is non-empty', () {
-      expect(kTmdbApiKey, isNotEmpty);
-    });
-  });
-
-  group('TMDB — read access token format (JWT)', () {
-    test('kTmdbReadAccessToken is non-empty', () {
-      expect(kTmdbReadAccessToken, isNotEmpty);
-    });
-
-    test('kTmdbReadAccessToken is a JWT with 3 dot-separated parts', () {
-      final List<String> parts = kTmdbReadAccessToken.split('.');
-      expect(parts.length, 3,
-          reason: 'JWT must have exactly 3 dot-separated segments');
-    });
-
-    test('JWT header is non-empty', () {
-      expect(kTmdbReadAccessToken.split('.')[0], isNotEmpty);
-    });
-
-    test('JWT payload is non-empty', () {
-      expect(kTmdbReadAccessToken.split('.')[1], isNotEmpty);
-    });
-
-    test('JWT signature is non-empty', () {
-      expect(kTmdbReadAccessToken.split('.')[2], isNotEmpty);
+    test('all four TMDb lookups use the gateway proxy', () {
+      for (final String path in <String>[
+        "'/tmdb/movie/\$tmdbId'",
+        "'/tmdb/tv/\$tmdbId'",
+        "'/tmdb/tv/\$tmdbId/season/\$season'",
+        "'/tmdb/find/\$tvdbId'",
+      ]) {
+        expect(api.contains(path), isTrue, reason: 'missing $path');
+      }
     });
   });
 
