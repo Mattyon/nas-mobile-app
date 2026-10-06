@@ -49,6 +49,19 @@ chown -R "$(stat -c %u:%g /src)" /src/build /src/.dart_tool 2>/dev/null || true
 IN_CONTAINER
 
 [ -f "$REPO/build/web/index.html" ] || { echo "build produced no index.html"; exit 1; }
+
+# Content-named entry points. Cloudflare's zone-wide Browser Cache TTL rewrites the
+# gateway's no-cache to max-age=14400 on .js, so phones kept running a previous
+# main.dart.js for hours, reloads included (2026-10-06: the speed-test fix "did not
+# work" because the old code was still cached). index.html is served fresh, so it points
+# at flutter_bootstrap.js?v=<hash>, which loads main.<hash>.dart.js: new code, new names.
+W="$REPO/build/web"
+H=$(sha256sum "$W/main.dart.js" | cut -c1-12)
+mv "$W/main.dart.js" "$W/main.$H.dart.js"
+sed -i "s#main\.dart\.js#main.$H.dart.js#g" "$W/flutter_bootstrap.js"
+sed -i "s#src=\"flutter_bootstrap\.js\"#src=\"flutter_bootstrap.js?v=$H\"#" "$W/index.html"
+grep -q "main.$H.dart.js" "$W/flutter_bootstrap.js" && grep -q "flutter_bootstrap.js?v=$H" "$W/index.html" \
+    || { echo "cache-busting rewrite failed"; exit 1; }
 rm -rf "$DEST.new"; cp -a "$REPO/build/web" "$DEST.new"
 rm -rf "$DEST.old"; [ -d "$DEST" ] && mv "$DEST" "$DEST.old"
 mv "$DEST.new" "$DEST" && rm -rf "$DEST.old"

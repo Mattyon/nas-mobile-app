@@ -79,8 +79,10 @@ What differs on the web (`kIsWeb`):
   all (`test/tmdb_test.dart` guards that).
 
 Cloudflare sets `Cache-Control: max-age=14400` on `.js` files regardless of what the
-gateway sends (zone setting *Browser Cache TTL*), so after a publish a phone can keep
-the previous version for up to 4 hours unless that setting is *Respect Existing Headers*.
+gateway sends (zone setting *Browser Cache TTL*), and phones kept running the previous
+`main.dart.js` for hours, reloads included. So the build script names the entry points
+by content: `index.html` (always fresh) loads `flutter_bootstrap.js?v=<hash>`, which
+loads `main.<hash>.dart.js` — new code, new names, nothing stale to reuse.
 
 ## Releasing to Google Play
 
