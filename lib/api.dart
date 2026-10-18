@@ -134,9 +134,10 @@ class Api {
 
   /// Send a batch of the app's log to the gateway (client_log.dart). Throws when it
   /// cannot, so the batch stays queued.
-  Future<void> sendClientLog(Map<String, Object?> payload) async {
+  Future<Object?> sendClientLog(Map<String, Object?> payload) async {
     if (token == null) throw StateError('not logged in');
-    await _dio.post<dynamic>('/client-log', data: payload);
+    final Response<dynamic> r = await _dio.post<dynamic>('/client-log', data: payload);
+    return r.data;
   }
 
   Future<void> setBaseUrl(String url) async {

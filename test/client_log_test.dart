@@ -43,7 +43,7 @@ void main() {
   group('flush', () {
     test('sends a batch with device, platform, version and the dropped count', () async {
       final List<Map<String, Object?>> sent = <Map<String, Object?>>[];
-      ClientLog.I.sender = (Map<String, Object?> p) async => sent.add(p);
+      ClientLog.I.sender = (Map<String, Object?> p) async { sent.add(p); return null; };
       ClientLog.I.info('api', 'GET /downloads -> 200 in 5 ms');
       await ClientLog.I.flush();
       expect(sent, hasLength(1));
@@ -64,7 +64,7 @@ void main() {
     test('entries from background isolates are picked up and sent', () async {
       await ClientLog.persist('warning', 'bg_http', 'GET /notifications -> 401');
       final List<Map<String, Object?>> sent = <Map<String, Object?>>[];
-      ClientLog.I.sender = (Map<String, Object?> p) async => sent.add(p);
+      ClientLog.I.sender = (Map<String, Object?> p) async { sent.add(p); return null; };
       await ClientLog.I.flush();
       final List<Object?> entries = sent.single['entries']! as List<Object?>;
       expect((entries.single! as Map<String, Object?>)['event'], 'bg_http');
@@ -75,6 +75,27 @@ void main() {
     test('nothing is sent before there is a sender (not logged in yet)', () async {
       ClientLog.I.info('api', 'waiting');
       await ClientLog.I.flush();
+      expect(ClientLog.I.pending, hasLength(1));
+    });
+  });
+
+  group('the LOG_LEVEL switch', () {
+    test('the gateway saying verbose is off keeps only warnings and errors', () async {
+      ClientLog.I.sender = (Map<String, Object?> p) async => <String, Object?>{'ok': true, 'verbose': false};
+      ClientLog.I.info('api', 'first');
+      await ClientLog.I.flush();
+      expect(ClientLog.I.verbose, isFalse);
+      ClientLog.I.info('api', 'GET /downloads -> 200');
+      ClientLog.I.warn('api', 'GET /grab -> 502');
+      expect(ClientLog.I.pending.map((Map<String, Object?> e) => e['level']), <String>['warning']);
+    });
+
+    test('and back on when it says so', () async {
+      ClientLog.I.verbose = false;
+      ClientLog.I.sender = (Map<String, Object?> p) async => <String, Object?>{'verbose': true};
+      ClientLog.I.warn('x', 'y');
+      await ClientLog.I.flush();
+      ClientLog.I.info('api', 'GET /downloads -> 200');
       expect(ClientLog.I.pending, hasLength(1));
     });
   });

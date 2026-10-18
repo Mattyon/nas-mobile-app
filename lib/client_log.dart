@@ -35,8 +35,13 @@ class ClientLog with WidgetsBindingObserver {
   Timer? _timer;
   String device = '';
 
-  /// How a batch reaches the gateway; set by [start] (Api.I.sendClientLog), replaced in tests.
-  Future<void> Function(Map<String, Object?> payload)? sender;
+  /// Verbose logging on? The gateway says so in each reply (LOG_LEVEL in the NAS's .env,
+  /// host/set-log-level.sh). Off: only warnings and errors are kept. On until told otherwise.
+  bool verbose = true;
+
+  /// How a batch reaches the gateway, returning its reply; set by [start]
+  /// (Api.I.sendClientLog), replaced in tests.
+  Future<Object?> Function(Map<String, Object?> payload)? sender;
 
   List<Map<String, Object?>> get pending => List<Map<String, Object?>>.unmodifiable(_buffer);
 
@@ -64,6 +69,7 @@ class ClientLog with WidgetsBindingObserver {
   }
 
   void add(String level, String event, String message, [Map<String, Object?>? data]) {
+    if (!verbose && level != 'warning' && level != 'error') return;
     _buffer.add(entry(level, event, message, data));
     while (_buffer.length > maxBuffered) {
       _buffer.removeAt(0);
@@ -94,7 +100,7 @@ class ClientLog with WidgetsBindingObserver {
   }
 
   /// Wire it up: device id, error hooks are set by the caller; periodic flush; lifecycle.
-  Future<void> start({required Future<void> Function(Map<String, Object?> payload) send}) async {
+  Future<void> start({required Future<Object?> Function(Map<String, Object?> payload) send}) async {
     sender = send;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     device = prefs.getString(deviceKey) ?? '';
@@ -120,7 +126,7 @@ class ClientLog with WidgetsBindingObserver {
 
   /// Send what is waiting. A failed send puts the batch back (within [maxBuffered]).
   Future<void> flush() async {
-    final Future<void> Function(Map<String, Object?>)? send = sender;
+    final Future<Object?> Function(Map<String, Object?>)? send = sender;
     if (send == null || _flushing) return;
     _flushing = true;
     try {
@@ -138,13 +144,14 @@ class ClientLog with WidgetsBindingObserver {
       final int dropped = _dropped;
       _dropped = 0;
       try {
-        await send(<String, Object?>{
+        final Object? reply = await send(<String, Object?>{
           'device': device,
           'platform': platformName(),
           'app_version': kAppVersion,
           'dropped': dropped,
           'entries': batch,
         });
+        if (reply is Map && reply['verbose'] is bool) verbose = reply['verbose'] as bool;
       } catch (_) {
         _buffer.insertAll(0, batch);
         _dropped += dropped;
@@ -165,6 +172,7 @@ class ClientLog with WidgetsBindingObserver {
     _flushing = false;
     _timer?.cancel();
     sender = null;
+    verbose = true;
   }
 
   @visibleForTesting
