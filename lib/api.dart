@@ -5,6 +5,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'client_log.dart';
+
 
 /// The gateway refused a login because too many recent attempts from this client
 /// failed. Distinct from a wrong password: retrying immediately cannot succeed, so the
@@ -77,6 +79,21 @@ class Api {
       receiveTimeout: const Duration(seconds: 90),
     ));
     if (token != null) _dio.options.headers['Authorization'] = 'Bearer $token';
+    // Every call into the app's log (client_log.dart): method, path, status, duration.
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (RequestOptions o, RequestInterceptorHandler h) {
+        o.extra['client_log_started'] = DateTime.now().millisecondsSinceEpoch;
+        h.next(o);
+      },
+      onResponse: (Response<dynamic> r, ResponseInterceptorHandler h) {
+        logCall(r.requestOptions, r.statusCode, null);
+        h.next(r);
+      },
+      onError: (DioException e, ErrorInterceptorHandler h) {
+        logCall(e.requestOptions, e.response?.statusCode, e);
+        h.next(e);
+      },
+    ));
     _dio.interceptors.add(InterceptorsWrapper(
       onError: (DioException e, ErrorInterceptorHandler handler) async {
         if (e.response?.statusCode == 401 && token != null) {
@@ -97,6 +114,29 @@ class Api {
         handler.next(e);
       },
     ));
+  }
+
+  /// One line in the app's log per API call; the log upload itself is left out, or every
+  /// upload would log another line to upload.
+  static void logCall(RequestOptions o, int? status, DioException? e) {
+    if (o.path == '/client-log') return;
+    final int started = (o.extra['client_log_started'] as int?) ?? DateTime.now().millisecondsSinceEpoch;
+    final int ms = DateTime.now().millisecondsSinceEpoch - started;
+    final String query = o.uri.query.isEmpty ? '' : '?${o.uri.query}';
+    final String what = '${o.method} ${o.uri.path}$query';
+    if (e == null && (status ?? 0) < 400) {
+      ClientLog.I.info('api', '$what -> $status in $ms ms');
+    } else {
+      ClientLog.I.warn('api', '$what -> ${status ?? e?.type.name} in $ms ms',
+          <String, Object?>{if (e?.message != null) 'error': e!.message});
+    }
+  }
+
+  /// Send a batch of the app's log to the gateway (client_log.dart). Throws when it
+  /// cannot, so the batch stays queued.
+  Future<void> sendClientLog(Map<String, Object?> payload) async {
+    if (token == null) throw StateError('not logged in');
+    await _dio.post<dynamic>('/client-log', data: payload);
   }
 
   Future<void> setBaseUrl(String url) async {

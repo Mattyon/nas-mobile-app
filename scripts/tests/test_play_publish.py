@@ -23,6 +23,32 @@ def pubspec(tmp_path):
     return p
 
 
+# ── VERSION, the one place the version is set ───────────────────────────────
+
+class TestVersionFile:
+    def test_reads_the_plain_version_file(self, tmp_path):
+        v = tmp_path / "VERSION"
+        v.write_text("1.1.3+19\n")
+        assert pp.read_version(v) == ("1.1.3", 19)
+
+    def test_bump_moves_version_and_its_pubspec_mirror_together(self, tmp_path, pubspec):
+        v = tmp_path / "VERSION"
+        v.write_text("1.1.0+12\n")
+        assert pp.bump_version(1, v, mirror=pubspec) == ("1.1.1", 13)
+        assert v.read_text() == "1.1.1+13\n"
+        assert "version: 1.1.1+13" in pubspec.read_text()
+
+    def test_build_flags_come_from_version(self, tmp_path):
+        v = tmp_path / "VERSION"
+        v.write_text("1.1.4+20\n")
+        assert pp.build_flags(v) == ["--build-name=1.1.4", "--build-number=20",
+                                     "--dart-define=APP_VERSION=1.1.4"]
+
+    def test_the_repo_version_and_pubspec_agree(self):
+        """VERSION is the source; pubspec.yaml mirrors it. They must never drift."""
+        assert pp.read_version(pp.VERSION_FILE) == pp.read_version(pp.PUBSPEC)
+
+
 # ── version arithmetic ───────────────────────────────────────────────────────
 
 class TestVersion:
@@ -33,13 +59,13 @@ class TestVersion:
         """Both, not just the code. The semver is what a person sees -- in the Store
         and in the gateway's "new version available" push -- so holding it still made
         consecutive releases announce themselves with identical text."""
-        assert pp.bump_version(1, pubspec) == ("1.1.1", 13)
+        assert pp.bump_version(1, pubspec, mirror=None) == ("1.1.1", 13)
         assert "version: 1.1.1+13" in pubspec.read_text()
 
     def test_after_patch_nine_the_minor_moves(self, pubspec):
         """The owner's scheme: patches 0..9, then the next minor starts at .0."""
         pubspec.write_text(pubspec.read_text().replace("1.1.0+12", "1.1.9+12"))
-        assert pp.bump_version(1, pubspec) == ("1.2.0", 13)
+        assert pp.bump_version(1, pubspec, mirror=None) == ("1.2.0", 13)
 
     @pytest.mark.parametrize("before,after", [
         ("1.1.0", "1.1.1"), ("1.1.8", "1.1.9"), ("1.1.9", "1.2.0"),
@@ -52,38 +78,38 @@ class TestVersion:
     def test_major_is_left_alone(self, pubspec):
         """A major release is the author's call; the bump never moves it."""
         pubspec.write_text(pubspec.read_text().replace("1.1.0+12", "2.7.9+12"))
-        assert pp.bump_version(1, pubspec)[0] == "2.8.0"
+        assert pp.bump_version(1, pubspec, mirror=None)[0] == "2.8.0"
 
     def test_ten_releases_from_x_y_0_reach_the_next_minor(self, pubspec):
-        names = [pp.bump_version(1, pubspec)[0] for _ in range(10)]
+        names = [pp.bump_version(1, pubspec, mirror=None)[0] for _ in range(10)]
         assert names == [f"1.1.{i}" for i in range(1, 10)] + ["1.2.0"]
 
     def test_bump_by_more_than_one_moves_only_the_code_further(self, pubspec):
         """--by exists to skip a burnt versionCode. That is not several releases, so
         the patch still advances exactly one."""
-        assert pp.bump_version(5, pubspec) == ("1.1.1", 17)
+        assert pp.bump_version(5, pubspec, mirror=None) == ("1.1.1", 17)
 
     def test_repeated_bumps_keep_climbing(self, pubspec):
-        assert [pp.bump_version(1, pubspec) for _ in range(3)] == [
+        assert [pp.bump_version(1, pubspec, mirror=None) for _ in range(3)] == [
             ("1.1.1", 13), ("1.1.2", 14), ("1.1.3", 15)]
 
     def test_bump_leaves_the_rest_of_pubspec_alone(self, pubspec):
         before = pubspec.read_text()
-        pp.bump_version(1, pubspec)
+        pp.bump_version(1, pubspec, mirror=None)
         after = pubspec.read_text()
         assert before.replace("1.1.0+12", "1.1.1+13") == after
 
     def test_a_non_semver_name_is_refused_rather_than_mangled(self, pubspec):
         pubspec.write_text(pubspec.read_text().replace("1.1.0+12", "1.1+12"))
         with pytest.raises(SystemExit):
-            pp.bump_version(1, pubspec)
+            pp.bump_version(1, pubspec, mirror=None)
 
     def test_refuses_to_go_backwards(self, pubspec):
         """Play never accepts a reused or lowered versionCode, so neither do we."""
         with pytest.raises(SystemExit):
-            pp.bump_version(0, pubspec)
+            pp.bump_version(0, pubspec, mirror=None)
         with pytest.raises(SystemExit):
-            pp.bump_version(-1, pubspec)
+            pp.bump_version(-1, pubspec, mirror=None)
 
     def test_clear_failure_on_a_malformed_version(self, tmp_path):
         bad = tmp_path / "pubspec.yaml"

@@ -115,8 +115,16 @@ Every release moves the version by one, and the patch stays a single digit:
 therefore counts groups of ten releases. `bump` (and so `release`) applies this
 itself (`next_semver()` in `play_publish.py`); a patch already past 9 from before the
 rule rolls over on its next release. The major is never moved by the tool — that is a
-deliberate manual edit of `pubspec.yaml`. The versionCode after `+` is separate and
+deliberate manual edit of `VERSION`. The versionCode after `+` is separate and
 just climbs by one per upload. (Scheme set by the owner on 2026-10-04.)
+
+### Where the version lives: `VERSION`
+
+`VERSION` at the repo root (`x.y.z+N`) is the one place the version is set (owner,
+2026-10-18). `play_publish.py build` and `scripts/build_web.sh` pass it to Flutter
+(`--build-name`, `--build-number`, and `--dart-define=APP_VERSION` for the app's log,
+`lib/client_log.dart`); `bump` moves it and mirrors it into `pubspec.yaml`, so a plain
+`flutter build` still shows the right number. A test fails if the two ever disagree.
 
 ### Why the patch version moves every release
 

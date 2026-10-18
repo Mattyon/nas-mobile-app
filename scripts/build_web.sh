@@ -22,6 +22,9 @@ DEST=${DEST:-/mnt/cache/appdata/nas-stack/config/webapp}
 # Ubuntu 24.04, not Debian 12: on bookworm flutter_tester segfaults at random (always
 # at the same address), killing test files mid-run; on noble the suite passes cleanly.
 IMAGE=${IMAGE:-ubuntu:24.04}
+# The app version comes from VERSION at the repo root (x.y.z+N), the one place it is set.
+VERSION=$(tr -d ' \t\r\n' < "$REPO/VERSION")
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]] || { echo "bad VERSION: '$VERSION'"; exit 1; }
 RUN_TESTS=1; [ "${1:-}" = "--no-test" ] && RUN_TESTS=0
 
 [ -x "$FLUTTER_SDK/bin/flutter" ] || { echo "no Flutter SDK at $FLUTTER_SDK"; exit 1; }
@@ -29,7 +32,7 @@ mkdir -p "$PUB_CACHE_DIR"
 
 docker run --rm -i \
     -v "$REPO:/src" -v "$FLUTTER_SDK:/opt/flutter" -v "$PUB_CACHE_DIR:/pub-cache" \
-    -e PUB_CACHE=/pub-cache -e RUN_TESTS="$RUN_TESTS" -e CI=true -w /src "$IMAGE" bash -s <<'IN_CONTAINER'
+    -e PUB_CACHE=/pub-cache -e RUN_TESTS="$RUN_TESTS" -e VERSION="$VERSION" -e CI=true -w /src "$IMAGE" bash -s <<'IN_CONTAINER'
 set -euo pipefail
 # flutter_tester crashes on load without fonts and a GL library (every test file failed).
 export DEBIAN_FRONTEND=noninteractive
@@ -44,7 +47,8 @@ if [ "$RUN_TESTS" = 1 ]; then
     flutter analyze --no-fatal-infos --no-fatal-warnings lib test | tail -3
     flutter test 2>&1 | tail -2
 fi
-flutter build web --release --base-href /app/ 2>&1 | tail -2
+flutter build web --release --base-href /app/ --build-name="${VERSION%+*}" \
+    --build-number="${VERSION#*+}" --dart-define=APP_VERSION="${VERSION%+*}" 2>&1 | tail -2
 chown -R "$(stat -c %u:%g /src)" /src/build /src/.dart_tool 2>/dev/null || true
 IN_CONTAINER
 

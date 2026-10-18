@@ -12,6 +12,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 import 'api.dart';
+import 'client_log.dart';
 import 'detail.dart';
 import 'i18n.dart';
 import 'user_permissions.dart';
@@ -108,10 +109,13 @@ Future<Map<String, dynamic>?> _bgHttpGet(String url, String token) async {
     final HttpClientRequest req = await client.getUrl(Uri.parse(url));
     req.headers.set('Authorization', 'Bearer $token');
     final HttpClientResponse resp = await req.close();
+    await ClientLog.persist(resp.statusCode == 200 ? 'info' : 'warning', 'bg_http',
+        'GET ${Uri.parse(url).path} -> ${resp.statusCode}');
     if (resp.statusCode != 200) return null;
     final String body = await resp.transform(utf8.decoder).join();
     return jsonDecode(body) as Map<String, dynamic>;
-  } catch (_) {
+  } catch (e) {
+    await ClientLog.persist('warning', 'bg_http', 'GET ${Uri.parse(url).path} failed: $e');
     return null;
   } finally {
     client?.close();
@@ -134,6 +138,7 @@ Future<String?> _bgReauth(String baseUrl, FlutterSecureStorage secure) async {
       req.headers.contentType = ContentType.json;
       req.write(jsonEncode(<String, String>{'username': user, 'password': pass}));
       final HttpClientResponse resp = await req.close();
+      await ClientLog.persist(resp.statusCode == 200 ? 'info' : 'warning', 'bg_reauth', 'POST /login -> ${resp.statusCode}');
       if (resp.statusCode != 200) return null;
       final String body = await resp.transform(utf8.decoder).join();
       final String? newToken =
@@ -261,6 +266,8 @@ class _PushStreamTaskHandler extends TaskHandler {
           await client.getUrl(Uri.parse('$baseUrl/notifications/stream'));
       req.headers.set('Authorization', 'Bearer $token');
       final HttpClientResponse resp = await req.close();
+      await ClientLog.persist(resp.statusCode == 200 ? 'info' : 'warning', 'push_stream',
+          'connect /notifications/stream -> ${resp.statusCode}');
 
       if (resp.statusCode == 401) {
         await _bgReauth(baseUrl, secure);
@@ -280,6 +287,7 @@ class _PushStreamTaskHandler extends TaskHandler {
         }
         if (evt['event'] == 'message') await _bgPollNotifications();
       }
+      await ClientLog.persist('info', 'push_stream', 'stream ended, reconnecting');
       return const Duration(seconds: 5); // stream ended cleanly — reconnect promptly
     } finally {
       client?.close(force: true);
@@ -359,6 +367,21 @@ Future<void> main() async {
   final bool android = !kIsWeb && Platform.isAndroid;
   if (!kIsWeb) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   await Api.I.init();
+  // The app's own log, sent to the gateway (client_log.dart): every API call, every
+  // error Flutter catches, lifecycle changes.
+  FlutterError.onError = (FlutterErrorDetails d) {
+    FlutterError.presentError(d);
+    ClientLog.I.error('flutter_error', d.exceptionAsString(), <String, Object?>{
+      'library': d.library,
+      'stack': d.stack.toString().split('\n').take(12).join('\n'),
+    });
+  };
+  WidgetsBinding.instance.platformDispatcher.onError = (Object e, StackTrace st) {
+    ClientLog.I.error('uncaught', e.toString(),
+        <String, Object?>{'stack': st.toString().split('\n').take(12).join('\n')});
+    return false; // still reported the default way
+  };
+  await ClientLog.I.start(send: Api.I.sendClientLog);
   if (android) await _initNotifications();
   final SharedPreferences prefs = await SharedPreferences.getInstance();
   final bool isDark = prefs.getBool('darkMode') ?? true;

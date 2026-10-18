@@ -8,8 +8,8 @@ because the release flow here is driven from Flutter, not Gradle.
 Subcommands
 -----------
   check     Verify credentials and print what is live on each track. Uploads nothing.
-  bump      Increment the versionCode in pubspec.yaml (the +N after the version).
-  build     flutter build appbundle --release
+  bump      Move VERSION one release on (and its pubspec.yaml mirror).
+  build     flutter build appbundle --release, with the version from VERSION
   upload    Upload an .aab and assign it to a track.
   release   bump -> build -> upload, the whole thing.
 
@@ -43,6 +43,11 @@ import urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+# The app version lives in VERSION (owner, 2026-10-18: "make the version somewhere outside
+# and build it with it"): every build passes it to Flutter (--build-name/--build-number,
+# and --dart-define=APP_VERSION for the app's log). pubspec.yaml carries a mirror, kept in
+# step by `bump`, so a plain `flutter build` still shows the right number.
+VERSION_FILE = REPO / "VERSION"
 PUBSPEC = REPO / "pubspec.yaml"
 DEFAULT_AAB = REPO / "build" / "app" / "outputs" / "bundle" / "release" / "app-release.aab"
 PACKAGE_NAME = "mattyzem.nas"
@@ -94,14 +99,29 @@ can push new releases but cannot create the listing.
 # the substitution then swallows the blank line after `version:` -- silently reflowing
 # pubspec.yaml on every bump. Caught by test_bump_leaves_the_rest_of_pubspec_alone.
 _VERSION_RE = re.compile(r"^version:[ \t]*(\d+\.\d+\.\d+)\+(\d+)[ \t]*$", re.M)
+_PLAIN_RE = re.compile(r"^[ \t]*(\d+\.\d+\.\d+)\+(\d+)[ \t]*$", re.M)
 
 
-def read_version(pubspec: Path = PUBSPEC) -> tuple[str, int]:
-    """Return (semver, versionCode) from pubspec.yaml."""
-    m = _VERSION_RE.search(pubspec.read_text())
+def read_version(path: Path = VERSION_FILE) -> tuple[str, int]:
+    """Return (semver, versionCode) from VERSION (`x.y.z+N`) or a pubspec.yaml."""
+    text = path.read_text()
+    m = _VERSION_RE.search(text) or _PLAIN_RE.search(text)
     if not m:
-        sys.exit(f"could not find a 'version: x.y.z+N' line in {pubspec}")
+        sys.exit(f"could not find a version 'x.y.z+N' in {path}")
     return m.group(1), int(m.group(2))
+
+
+def _write_version(path: Path, name: str, code: int) -> None:
+    if _VERSION_RE.search(path.read_text()):
+        path.write_text(_VERSION_RE.sub(f"version: {name}+{code}", path.read_text(), count=1))
+    else:
+        path.write_text(f"{name}+{code}\n")
+
+
+def build_flags(path: Path = VERSION_FILE) -> list[str]:
+    """What every build passes to Flutter, so the version comes from VERSION alone."""
+    name, code = read_version(path)
+    return [f"--build-name={name}", f"--build-number={code}", f"--dart-define=APP_VERSION={name}"]
 
 
 def next_semver(name: str) -> str:
@@ -117,7 +137,7 @@ def next_semver(name: str) -> str:
     return f"{major}.{minor + 1}.0" if patch >= 9 else f"{major}.{minor}.{patch + 1}"
 
 
-def bump_version(by: int = 1, pubspec: Path = PUBSPEC) -> tuple[str, int]:
+def bump_version(by: int = 1, path: Path = VERSION_FILE, mirror: Path | None = None) -> tuple[str, int]:
     """Move the semver one release on (see next_semver) *and* the versionCode by
     `by`; write pubspec.yaml back.
 
@@ -135,10 +155,13 @@ def bump_version(by: int = 1, pubspec: Path = PUBSPEC) -> tuple[str, int]:
     """
     if by < 1:
         sys.exit("--by must be at least 1; versionCode may never go backwards")
-    name, code = read_version(pubspec)
+    name, code = read_version(path)
     new_name, new_code = next_semver(name), code + by
-    pubspec.write_text(
-        _VERSION_RE.sub(f"version: {new_name}+{new_code}", pubspec.read_text(), count=1))
+    _write_version(path, new_name, new_code)
+    if mirror is None and path == VERSION_FILE:
+        mirror = PUBSPEC
+    if mirror is not None and mirror.exists():
+        _write_version(mirror, new_name, new_code)
     return new_name, new_code
 
 
@@ -234,7 +257,7 @@ def _explain_api_error(e: Exception) -> int:
 
 def cmd_bump(args) -> int:
     name, new = bump_version(args.by)
-    print(f"pubspec.yaml -> {name}+{new}")
+    print(f"VERSION (and the pubspec.yaml mirror) -> {name}+{new}")
     return 0
 
 
@@ -250,7 +273,7 @@ def flutter_bin() -> str:
 def cmd_build(args) -> int:
     name, code = read_version()
     print(f"building {name}+{code} …")
-    r = subprocess.run([flutter_bin(), "build", "appbundle", "--release"], cwd=REPO)
+    r = subprocess.run([flutter_bin(), "build", "appbundle", "--release", *build_flags()], cwd=REPO)
     if r.returncode != 0:
         return r.returncode
     aab = Path(args.aab)
