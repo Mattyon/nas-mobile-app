@@ -24,13 +24,6 @@ final ValueNotifier<ThemeMode> themeMode = ValueNotifier<ThemeMode>(ThemeMode.da
 // ----------------------------- local notifications --------------------------
 final FlutterLocalNotificationsPlugin _flnp = FlutterLocalNotificationsPlugin();
 
-const AndroidNotificationChannel _dlChannel = AndroidNotificationChannel(
-  'downloads',
-  'Downloads',
-  description: 'Download completion alerts',
-  importance: Importance.high,
-);
-
 const AndroidNotificationChannel _alertChannel = AndroidNotificationChannel(
   'nas_alerts',
   'NAS Alerts',
@@ -44,28 +37,11 @@ Future<void> _initNotifications() async {
   await _flnp.initialize(settings: const InitializationSettings(android: android));
   final AndroidFlutterLocalNotificationsPlugin? ap = _flnp
       .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-  await ap?.createNotificationChannel(_dlChannel);
+  // "Download complete" was dropped (2026-10-18): the gateway's "Ready to watch" says it
+  // once the file is actually in the library. Remove the old channel from existing installs.
+  await ap?.deleteNotificationChannel(channelId: 'downloads');
   await ap?.createNotificationChannel(_alertChannel);
   await ap?.requestNotificationsPermission();
-}
-
-Future<void> _notifyDownloadDone(String name) async {
-  if (kIsWeb) return;
-  await _flnp.show(
-    id: name.hashCode.abs() % 100000,
-    title: 'Download complete',
-    body: name,
-    notificationDetails: NotificationDetails(
-      android: AndroidNotificationDetails(
-        _dlChannel.id,
-        _dlChannel.name,
-        channelDescription: _dlChannel.description,
-        importance: Importance.high,
-        priority: Priority.high,
-        icon: '@mipmap/ic_launcher',
-      ),
-    ),
-  );
 }
 
 Future<void> _showSystemNotification(Map<String, dynamic> n) async {
@@ -1872,7 +1848,6 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   String? _error;
   DateTime? _prioPausedUntil;
   // hash → group number from the previous poll; populated after first fetch.
-  Map<String, int>? _prevGroups;
 
   @override
   void initState() {
@@ -1905,30 +1880,6 @@ class _DownloadsScreenState extends State<DownloadsScreen>
         setState(() { _xfer = x; _error = null; });
         return;
       }
-
-      // Build current group snapshot and fire completion notifications.
-      final Map<String, int> curr = <String, int>{};
-      for (final dynamic raw in d) {
-        final Map<String, dynamic> t = raw as Map<String, dynamic>;
-        final String? hash = t['hash']?.toString();
-        if (hash == null) continue;
-        curr[hash] = _group(t['state']?.toString() ?? '');
-      }
-      if (_prevGroups != null) {
-        // Fire once per torrent that crossed from active/queued (0-1) → done (2).
-        for (final MapEntry<String, int> entry in curr.entries) {
-          final int? prev = _prevGroups![entry.key];
-          if (prev != null && prev <= 1 && entry.value == 2) {
-            final Map<String, dynamic>? t = d
-                .cast<Map<String, dynamic>>()
-                .where((Map<String, dynamic> e) => e['hash'] == entry.key)
-                .firstOrNull;
-            final String name = t?['name']?.toString() ?? 'Download';
-            _notifyDownloadDone(name);
-          }
-        }
-      }
-      _prevGroups = curr;
 
       setState(() {
         _items = d;
