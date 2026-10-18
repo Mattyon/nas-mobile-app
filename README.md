@@ -108,6 +108,31 @@ scripts/.venv/bin/python scripts/play_publish.py release   # bump + build + uplo
 Options: `--track internal\|alpha\|beta\|production` (default **internal**),
 `--notes "…"`, `--rollout 0.1` for a staged rollout, `--dry-run`, `--yes`.
 
+
+### Building on the NAS: `scripts/build_android.sh`
+
+Since 2026-10-18 the Android bundle is built on the NAS, not on a desktop (the work Mac
+must not build or hold the app's secrets). The script runs Flutter from
+`/mnt/cache/appdata/flutter-sdk` in a small builder image (Ubuntu 24.04 + JDK 21,
+`nas-app-builder:jdk21`, built on first use), with the Android SDK in
+`/mnt/cache/appdata/android-sdk` and Gradle's cache in `/mnt/cache/appdata/gradle-home`
+(only the first run downloads them, ~5 min). The version comes from `VERSION`; signing uses
+`android/key.properties` + `android/upload-keystore.jks` (gitignored; masters in
+`/boot/config/app-secrets/`). It runs the tests, builds, checks the signature, and keeps a
+copy in `/mnt/cache/appdata/app-builds/<version>/`. A release from the NAS:
+
+    docker run --rm -v $PWD:/w -w /w nas-stack-ai-gateway python3 scripts/play_publish.py bump
+    bash scripts/build_android.sh
+    # upload: play_publish.py upload --track internal --notes "..." (needs scripts/requirements.txt,
+    #   PLAY_SERVICE_ACCOUNT_JSON=/boot/config/app-secrets/play-service-account.json,
+    #   NAS_GATEWAY_URL + WATCHDOG_TOKEN for the announcement)
+
+**workmanager is pinned** to the versions 1.1.3 shipped with (`pubspec.yaml`): from
+workmanager_android 0.9.3 on, the plugin relies on AGP 9's built-in Kotlin, which this app
+keeps off because flutter_foreground_task still applies the Kotlin Gradle plugin — nothing
+then compiles workmanager's Kotlin and the release build fails ("cannot find symbol
+WorkmanagerPlugin"). A newer Flutter SDK's `pub get` had quietly moved it to 0.9.3.
+
 ### Version numbers: patch 0–9, then the next minor
 
 Every release moves the version by one, and the patch stays a single digit:
