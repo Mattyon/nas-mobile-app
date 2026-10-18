@@ -29,6 +29,7 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
 - **Superadmin features** — AI chat (multi-conversation, server-side history; requires `ai_access` flag).
 - **English + Čeština** UI with an in-app toggle.
 - **Notifications** — bell badge with unread count; timestamps; system bar notifications while foregrounded, backgrounded, or killed (WorkManager 15-min poll).
+- **Notification settings** (the ⚙ in the notifications sheet, `lib/notification_settings.dart`) — one switch per kind of notification, stored on the gateway (`/notifications/prefs`); server alerts for the admin are not listed and cannot be muted. Between 23:00 and 07:00 the gateway marks notifications `silent` (unless you asked for the thing during the night) and the app shows them on a second, silent channel, "NAS Alerts (night)"; the web build's push is silent too.
 - **Help / Connect screen** — step-by-step Jellyfin setup for TV, phone, and browser on both local network and remote (Cloudflare Tunnel / Tailscale).
 
 ## Configure

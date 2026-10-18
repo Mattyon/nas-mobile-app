@@ -17,6 +17,8 @@ self.addEventListener('push', (event) => {
     icon: 'icons/Icon-192.png',
     badge: 'icons/Icon-192.png',
     tag: d.tag || undefined,
+    // Quiet hours (23:00-07:00): the gateway marks a push silent -- no sound or vibration.
+    silent: d.silent === true,
     data: { url: d.url || '/app/' },
   }));
 });

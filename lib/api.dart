@@ -568,6 +568,18 @@ class Api {
     await _dio.post<dynamic>('/notifications/clear');
   }
 
+  /// Mute switches for this account: {groups: [{id, label, label_cs, muted}]}.
+  Future<Map<String, dynamic>> notificationPrefs() async {
+    final r = await _dio.get<Map<String, dynamic>>('/notifications/prefs');
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> setNotificationPrefs(List<String> muted) async {
+    final r = await _dio.put<Map<String, dynamic>>('/notifications/prefs',
+        data: <String, dynamic>{'muted': muted});
+    return r.data ?? <String, dynamic>{};
+  }
+
   Future<void> cancelDownload(String hash) async {
     await _dio.delete<dynamic>('/downloads/$hash');
   }

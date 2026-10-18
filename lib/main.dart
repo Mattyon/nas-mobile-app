@@ -15,6 +15,7 @@ import 'api.dart';
 import 'client_log.dart';
 import 'detail.dart';
 import 'i18n.dart';
+import 'notification_settings.dart';
 import 'user_permissions.dart';
 import 'web_push.dart';
 
@@ -32,6 +33,23 @@ const AndroidNotificationChannel _alertChannel = AndroidNotificationChannel(
   importance: Importance.high,
 );
 
+// Quiet hours (23:00-07:00): the gateway marks user-facing notifications `silent` unless
+// you asked for the thing during the night. They land on this channel -- shown, but no
+// sound, vibration or heads-up. Android fixes a channel's importance when it is created,
+// which is why this is a second channel rather than a per-notification flag.
+const AndroidNotificationChannel _quietChannel = AndroidNotificationChannel(
+  'nas_alerts_quiet',
+  'NAS Alerts (night)',
+  description: 'Notifications that arrive during quiet hours, without sound',
+  importance: Importance.low,
+  playSound: false,
+  enableVibration: false,
+);
+
+/// Which channel a notification from /notifications goes on.
+AndroidNotificationChannel channelFor(Map<String, dynamic> n) =>
+    n['silent'] == true ? _quietChannel : _alertChannel;
+
 Future<void> _initNotifications() async {
   const AndroidInitializationSettings android =
       AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -42,6 +60,7 @@ Future<void> _initNotifications() async {
   // once the file is actually in the library. Remove the old channel from existing installs.
   await ap?.deleteNotificationChannel(channelId: 'downloads');
   await ap?.createNotificationChannel(_alertChannel);
+  await ap?.createNotificationChannel(_quietChannel);
   await ap?.requestNotificationsPermission();
 }
 
@@ -56,17 +75,21 @@ Future<void> _showSystemNotification(Map<String, dynamic> n) async {
           ? (n['body_cs']?.toString() ?? n['body']?.toString())
           : n['body']?.toString()) ??
       '';
+  final AndroidNotificationChannel ch = channelFor(n);
+  final bool quiet = ch == _quietChannel;
   await _flnp.show(
     id: (n['id'] as int? ?? 0).abs() % 100000,
     title: title,
     body: body,
     notificationDetails: NotificationDetails(
       android: AndroidNotificationDetails(
-        _alertChannel.id,
-        _alertChannel.name,
-        channelDescription: _alertChannel.description,
-        importance: Importance.high,
-        priority: Priority.high,
+        ch.id,
+        ch.name,
+        channelDescription: ch.description,
+        importance: ch.importance,
+        priority: quiet ? Priority.low : Priority.high,
+        playSound: !quiet,
+        enableVibration: !quiet,
         icon: '@mipmap/ic_launcher',
       ),
     ),
@@ -202,16 +225,21 @@ Future<void> _bgPollNotifications() async {
             ? (n['body_cs']?.toString() ?? n['body']?.toString())
             : n['body']?.toString()) ??
         '';
+    final AndroidNotificationChannel ch = channelFor(n);
+    final bool quiet = ch == _quietChannel;
     await flnp.show(
       id: (n['id'] as int? ?? 0).abs() % 100000,
       title: title,
       body: body,
-      notificationDetails: const NotificationDetails(
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
-          'nas_alerts',
-          'NAS Alerts',
-          importance: Importance.high,
-          priority: Priority.high,
+          ch.id,
+          ch.name,
+          channelDescription: ch.description,
+          importance: ch.importance,
+          priority: quiet ? Priority.low : Priority.high,
+          playSound: !quiet,
+          enableVibration: !quiet,
           icon: '@mipmap/ic_launcher',
         ),
       ),
@@ -593,6 +621,16 @@ class _NotificationBellState extends State<NotificationBell> with LangAware {
                 children: <Widget>[
                   Expanded(child: Text(tr('notifications'),
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+                  IconButton(
+                    key: const ValueKey<String>('notif-settings'),
+                    tooltip: tr('notificationSettings'),
+                    icon: const Icon(Icons.tune),
+                    onPressed: () {
+                      Navigator.pop(ctx2);
+                      Navigator.of(context).push(MaterialPageRoute<void>(
+                          builder: (_) => const NotificationSettingsPage()));
+                    },
+                  ),
                   if (_items.isNotEmpty)
                     TextButton(onPressed: () { _clear(); Navigator.pop(ctx2); },
                         child: Text(tr('clearAll'))),
