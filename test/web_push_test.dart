@@ -120,6 +120,22 @@ void main() {
       expect(find.text(tr('webPushTestSent').replaceAll('{n}', '1').replaceAll('{d}', '2')), findsOneWidget);
     });
 
+    testWidgets('one device gets a sentence of its own, no "device(s)"', (WidgetTester t) async {
+      await openWith(t, PushState.on, () async => <String, dynamic>{'devices': 1, 'sent': 1});
+      await t.tap(find.byKey(const ValueKey<String>('push-test')));
+      await t.pumpAndSettle();
+      expect(find.text(tr('webPushTestSentOne')), findsOneWidget);
+    });
+
+    test('no "(s)" anywhere in the texts', () {
+      for (final String l in <String>['en', 'cs']) {
+        lang.value = l;
+        for (final String k in <String>['webPushTestSent', 'webPushTestSentOne', 'webPushTestNone']) {
+          expect(tr(k).contains('(s)'), isFalse, reason: '$l $k');
+        }
+      }
+    });
+
     testWidgets('no device subscribed says so', (WidgetTester t) async {
       await openWith(t, PushState.on, () async => <String, dynamic>{'devices': 0, 'sent': 0});
       await t.tap(find.byKey(const ValueKey<String>('push-test')));

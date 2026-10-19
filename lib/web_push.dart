@@ -60,9 +60,12 @@ class _WebPushDialogState extends State<WebPushDialog> with LangAware {
       final int devices = (r['devices'] as int?) ?? 0;
       final int sent = (r['sent'] as int?) ?? 0;
       if (mounted) {
+        // No "device(s)": one device gets its own sentence (owner, 2026-10-19).
         setState(() => _testResult = devices == 0
             ? tr('webPushTestNone')
-            : tr('webPushTestSent').replaceAll('{n}', '$sent').replaceAll('{d}', '$devices'));
+            : devices == 1 && sent == 1
+                ? tr('webPushTestSentOne')
+                : tr('webPushTestSent').replaceAll('{n}', '$sent').replaceAll('{d}', '$devices'));
       }
     } catch (e) {
       if (mounted) setState(() => _error = tr('webPushError').replaceAll('{e}', '$e'));
