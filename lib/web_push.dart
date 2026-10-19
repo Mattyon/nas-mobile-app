@@ -32,7 +32,9 @@ Future<void> showWebPushDialog(BuildContext context) =>
     showDialog<void>(context: context, builder: (_) => const WebPushDialog());
 
 class WebPushDialog extends StatefulWidget {
-  const WebPushDialog({super.key});
+  const WebPushDialog({super.key, this.sendTest});
+
+  final Future<Map<String, dynamic>> Function()? sendTest;
 
   @override
   State<WebPushDialog> createState() => _WebPushDialogState();
@@ -42,6 +44,32 @@ class _WebPushDialogState extends State<WebPushDialog> with LangAware {
   PushState? _state;
   bool _busy = false;
   String? _error;
+  String? _testResult;
+
+  /// Injectable for tests; defaults to the gateway.
+  Future<Map<String, dynamic>> Function() get _sendTest => widget.sendTest ?? Api.I.webPushTest;
+
+  Future<void> _test() async {
+    setState(() {
+      _busy = true;
+      _testResult = null;
+      _error = null;
+    });
+    try {
+      final Map<String, dynamic> r = await _sendTest();
+      final int devices = (r['devices'] as int?) ?? 0;
+      final int sent = (r['sent'] as int?) ?? 0;
+      if (mounted) {
+        setState(() => _testResult = devices == 0
+            ? tr('webPushTestNone')
+            : tr('webPushTestSent').replaceAll('{n}', '$sent').replaceAll('{d}', '$devices'));
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = tr('webPushError').replaceAll('{e}', '$e'));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   void initState() {
@@ -92,6 +120,10 @@ class _WebPushDialogState extends State<WebPushDialog> with LangAware {
           : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
               Text(text),
+              if (_testResult != null) ...<Widget>[
+                const SizedBox(height: 8),
+                Text(_testResult!, key: const ValueKey<String>('push-test-result')),
+              ],
               if (_error != null) ...<Widget>[
                 const SizedBox(height: 8),
                 Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
@@ -99,6 +131,12 @@ class _WebPushDialogState extends State<WebPushDialog> with LangAware {
             ]),
       actions: <Widget>[
         TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('close'))),
+        if (s == PushState.on)
+          TextButton(
+            key: const ValueKey<String>('push-test'),
+            onPressed: _busy ? null : _test,
+            child: Text(tr('webPushTest')),
+          ),
         if (canToggle)
           FilledButton(
             onPressed: _busy ? null : _toggle,

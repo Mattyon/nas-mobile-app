@@ -100,4 +100,38 @@ void main() {
       }
     }
   });
+
+  group('send a test', () {
+    Future<void> openWith(WidgetTester t, PushState st, Future<Map<String, dynamic>> Function() send) async {
+      webPush = FakePush(st);
+      await t.pumpWidget(MaterialApp(home: Scaffold(body: WebPushDialog(sendTest: send))));
+      await t.pumpAndSettle();
+    }
+
+    testWidgets('only offered when notifications are on', (WidgetTester t) async {
+      await openWith(t, PushState.off, () async => <String, dynamic>{});
+      expect(find.byKey(const ValueKey<String>('push-test')), findsNothing);
+    });
+
+    testWidgets('says how many devices it reached', (WidgetTester t) async {
+      await openWith(t, PushState.on, () async => <String, dynamic>{'devices': 2, 'sent': 1});
+      await t.tap(find.byKey(const ValueKey<String>('push-test')));
+      await t.pumpAndSettle();
+      expect(find.text(tr('webPushTestSent').replaceAll('{n}', '1').replaceAll('{d}', '2')), findsOneWidget);
+    });
+
+    testWidgets('no device subscribed says so', (WidgetTester t) async {
+      await openWith(t, PushState.on, () async => <String, dynamic>{'devices': 0, 'sent': 0});
+      await t.tap(find.byKey(const ValueKey<String>('push-test')));
+      await t.pumpAndSettle();
+      expect(find.text(tr('webPushTestNone')), findsOneWidget);
+    });
+
+    testWidgets('a failure is shown, not swallowed', (WidgetTester t) async {
+      await openWith(t, PushState.on, () async => throw Exception('offline'));
+      await t.tap(find.byKey(const ValueKey<String>('push-test')));
+      await t.pumpAndSettle();
+      expect(find.textContaining('offline'), findsOneWidget);
+    });
+  });
 }

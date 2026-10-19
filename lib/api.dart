@@ -568,6 +568,13 @@ class Api {
     await _dio.post<dynamic>('/notifications/clear');
   }
 
+  /// Send a test Web Push to this account's own browsers now:
+  /// {devices, sent, results: [{service, ok, status}]}.
+  Future<Map<String, dynamic>> webPushTest() async {
+    final r = await _dio.post<Map<String, dynamic>>('/push/test');
+    return r.data ?? <String, dynamic>{};
+  }
+
   /// Mute switches for this account: {groups: [{id, label, label_cs, muted}]}.
   Future<Map<String, dynamic>> notificationPrefs() async {
     final r = await _dio.get<Map<String, dynamic>>('/notifications/prefs');
