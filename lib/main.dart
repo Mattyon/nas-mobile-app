@@ -16,6 +16,7 @@ import 'client_log.dart';
 import 'detail.dart';
 import 'i18n.dart';
 import 'notification_settings.dart';
+import 'trash_screen.dart';
 import 'user_permissions.dart';
 import 'web_push.dart';
 
@@ -1174,6 +1175,9 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                             SnackBar(content: Text(tr('newEpsStarted'))));
                       }
                     } catch (_) {}
+                  } else if (v == 'trash') {
+                    Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => const TrashScreen()));
                   } else if (v == 'health') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const HealthCheckScreen()));
@@ -1293,6 +1297,15 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                         const Icon(Icons.network_check, size: 20),
                         const SizedBox(width: 12),
                         Text(tr('speedtest')),
+                      ]),
+                    ),
+                  if (Api.I.isAdmin)
+                    PopupMenuItem<String>(
+                      value: 'trash',
+                      child: Row(children: <Widget>[
+                        const Icon(Icons.delete_outline, size: 20),
+                        const SizedBox(width: 12),
+                        Text(tr('trash')),
                       ]),
                     ),
                   if (Api.I.isAdmin)
@@ -2484,7 +2497,12 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
     if (!ok) return;
     final double freeBefore = (_disk['free_gb'] as num?)?.toDouble() ?? 0;
     try {
-      await Api.I.deleteItem(_type, m['id'] as int);
+      final Map<String, dynamic> r = await Api.I.deleteItem(_type, m['id'] as int);
+      // Only moved to the trash: say so, and for how long it can be restored.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(movedToTrashText((r['trash_days'] as num?)?.toInt() ?? 14))));
+      }
       await _refresh();
       // Radarr/Sonarr delete the files asynchronously: the API returns before the
       // bytes are actually gone, so the refresh above usually still reports the OLD

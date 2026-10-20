@@ -378,9 +378,22 @@ class Api {
     return r.data!['items'] as List<dynamic>;
   }
 
-  Future<void> deleteItem(String type, int id) async {
-    await _dio.delete<dynamic>('/library',
+  /// Moves the title to the trash; returns the reply ({trash_days, ...}).
+  Future<Map<String, dynamic>> deleteItem(String type, int id) async {
+    final r = await _dio.delete<Map<String, dynamic>>('/library',
         queryParameters: <String, dynamic>{'type': type, 'id': id});
+    return r.data ?? <String, dynamic>{};
+  }
+
+  /// The trash bin (admin): {days, items: [{id, kind, title, year, size, deleted_at, days_left}]}.
+  Future<Map<String, dynamic>> trash() async {
+    final r = await _dio.get<Map<String, dynamic>>('/trash');
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> restoreFromTrash(String id) async {
+    final r = await _dio.post<Map<String, dynamic>>('/trash/$id/restore');
+    return r.data ?? <String, dynamic>{};
   }
 
   Future<Map<String, dynamic>> diskspace() async {
