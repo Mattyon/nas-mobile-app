@@ -20,15 +20,43 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
   next to the full-size `poster`; rows use the former, the detail screen's full-bleed
   hero the latter. Measured: the library list went from 4480 KB of cached images to
   376 KB, while opening a title still pulls the 1.2 MB original.
-- **Download** at **Fast / Balanced / Best / Czech audio** quality (AI/heuristic picks the release; goes through Radarr/Sonarr so it's imported, renamed, and subtitled).
+- **Download** at **Fast / Balanced / Best / Czech audio** quality (AI/heuristic picks the release; goes through Radarr/Sonarr so it's imported, renamed, and subtitled). Users with AI access first pick the **source**: Standard (Radarr/Sonarr) or ThePirateBay (season packs picked by the AI).
 - **Downloads** tab — live progress / speed / ETA / state; drag to reorder; cancel with stop button.
-- **Library** tab — grid view; admins can delete a title from disk. Filter to titles
-  held in **Czech** or **English** (🇨🇿 / 🇬🇧 chips); the choice is remembered across
-  app restarts, for people who only ever want to know what exists in one language.
-- **Admin features** — media sessions (Plex + Jellyfin), speed limits, user management, speedtest, health check.
-- **Superadmin features** — AI chat (multi-conversation, server-side history; requires `ai_access` flag).
+- **Library** tab — list view, **alphabetical** (by sort title, so "The Green Mile" is
+  under G; sorted by the gateway). Admins can delete a title with the trash icon on its
+  row: it is **moved to the Trash**, restorable for `RECYCLE_BIN_DAYS` (14) days, then
+  deleted for good, and the app says so. Shows with gaps get an amber **"N missing"**
+  badge, and so do their incomplete seasons. Filter to titles held in **Czech** or
+  **English** (🇨🇿 / 🇬🇧 chips); the choice is remembered across app restarts.
+- **Trash** (admin, ☰ menu → Trash, `lib/trash_screen.dart`) — titles deleted in the app
+  with size, date and days left; **Restore** puts the files back and adds the title to
+  Radarr/Sonarr again (gateway `GET /trash`, `POST /trash/{id}/restore`).
+- **The ☰ menu** — for everyone: Check new episodes, Jellyfin URL, light/dark theme,
+  Notifications on this device (web build), Help / Connect, Log out, Kill app.
+  **Admins** also get: media sessions (Plex + Jellyfin), speed limits and pause/resume,
+  user management (incl. the per-user **"Can download in Jellyfin"** switch, on by
+  default, with a marker on users who have it off), **Smart sockets** (Tapo P100: on/off,
+  add/rename/remove, LED, countdown, weekly schedule, usage), speedtest, **Trash**, health
+  check, and **Uptime Kuma** (opens https://kuma.mattyzem.com in the browser; needs the
+  VIEW/https `<queries>` entry in AndroidManifest). **Superadmins**: AI chat
+  (multi-conversation, server-side history; needs the `ai_access` flag) and **Cameras**
+  (list, add, rename, delete, live feed).
+- **Android Auto / AAOS** (`android/app/src/main/kotlin/.../NasCarAppService.kt`,
+  `screens/`) — Jellyfin video browser and player, downloads, search and sockets in the
+  car; the Jellyfin URL comes from the menu setting.
+- **App log to the NAS** (`lib/client_log.dart`) — API calls, errors, lifecycle and
+  background tasks (credentials masked) go to the gateway's `POST /client-log` every
+  minute, when the app goes to the background and after an error; with the NAS's
+  `LOG_LEVEL=info` only warnings and errors are kept.
 - **English + Čeština** UI with an in-app toggle.
-- **Notifications** — bell badge with unread count; timestamps; system bar notifications while foregrounded, backgrounded, or killed (WorkManager 15-min poll).
+- **Notifications** — bell badge with unread count; timestamps. They reach the phone three
+  ways: a **foreground service** holds the gateway's `/notifications/stream` open so alerts
+  arrive at once (its own silent "Background connection" notification keeps it alive);
+  the open app also polls every 60 s; and a WorkManager job polls every 15 min as the
+  last fallback when the app is killed. Android channels: `nas_alerts` "NAS Alerts",
+  `nas_alerts_quiet` "NAS Alerts (night)" (quiet hours, no sound), `nas_push_listener_v2`
+  "Background connection" (MIN importance); the old `downloads` channel is deleted on
+  start (the "Download complete" notification was dropped — "Ready to watch" says it).
 - **Notification settings** (the ⚙ in the notifications sheet, `lib/notification_settings.dart`) — one switch per kind of notification, stored on the gateway (`/notifications/prefs`); server alerts for the admin are not listed and cannot be muted. Between 23:00 and 07:00 the gateway marks notifications `silent` (unless you asked for the thing during the night) and the app shows them on a second, silent channel, "NAS Alerts (night)"; the web build's push is silent too.
 - **Help / Connect screen** — step-by-step Jellyfin setup for TV, phone, and browser on both local network and remote (Cloudflare Tunnel / Tailscale).
 
@@ -36,19 +64,19 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
 On the login screen the **Gateway URL** is pre-set to `https://nas.mattyzem.com` (Cloudflare Tunnel — works on any network, no VPN needed). To use your own domain or a Tailscale IP instead, tap the URL field and change it.
 
 ## Build / run
-Requires the Flutter SDK + Android toolchain (JDK 17 + Android SDK), or just Android Studio.
+Builds run **on the NAS**, never on the work Mac (it must not build or hold the app's
+secrets): `scripts/build_android.sh` for the Play bundle and `scripts/build_web.sh` for
+the web version. Both run the tests first (see "Building on the NAS" below). The Flutter
+tests can also be run alone in the same builder image:
 
 ```bash
 flutter pub get
 flutter analyze            # static check
-flutter test               # unit tests
-flutter build apk --debug  # -> build/app/outputs/flutter-apk/app-debug.apk
-# install on a connected phone:
-flutter install            # or: adb install build/app/outputs/flutter-apk/app-debug.apk
+flutter test               # unit tests (widgets, i18n, API helpers)
 ```
 
-For a smaller, optimized build use `flutter build apk --release` (needs a signing config
-for Play, but a release APK can be sideloaded as-is).
+The release publisher has its own Python tests:
+`pip install -r scripts/requirements-dev.txt && pytest scripts/tests`.
 
 ## Web version (iPhone without the App Store)
 
@@ -88,21 +116,29 @@ gateway sends (zone setting *Browser Cache TTL*), and phones kept running the pr
 by content: `index.html` (always fresh) loads `flutter_bootstrap.js?v=<hash>`, which
 loads `main.<hash>.dart.js` — new code, new names, nothing stale to reuse.
 
+**Notifications on the web build:** the menu's "Notifications on this device" turns Web
+Push on for that browser (on an iPhone only when opened from the Home Screen). When it is
+on, **Send a test** has the gateway push a test to this account's devices at once and
+says how many it reached ("Test sent to your device", or "to 1 of your 2 devices").
+
 ## Releasing to Google Play
 
 `scripts/play_publish.py` drives the Google Play Developer API directly. Chosen over
 fastlane because that would pull a whole Ruby toolchain in for one task.
 
+The normal release runs on the NAS in three steps -- bump, build, upload -- as shown in
+"Building on the NAS" below. The one-step `release` command (bump + build + upload) is
+only for a machine that has Flutter and a JDK itself.
+
 ```bash
-scripts/.venv/bin/python scripts/play_publish.py check     # credentials + what is live
-scripts/.venv/bin/python scripts/play_publish.py release   # bump + build + upload
+python3 scripts/play_publish.py check     # credentials + what is live
 ```
 
 | Command | Does |
 |---|---|
 | `check` | Verifies credentials, prints the versionCode live on each track, and says whether the local one is free. Uploads nothing. |
 | `bump [--by N]` | Moves the **version one release on and** the versionCode (`1.1.0+16` → `1.1.1+17`; `1.1.9` → `1.2.0`, see below). `--by` only skips versionCodes — the version always moves by exactly one release, however many codes were burnt. |
-| `build` | `flutter build appbundle --release` |
+| `build` | `flutter build appbundle --release` with the version from `VERSION` (`--build-name`, `--build-number`, `--dart-define=APP_VERSION`); uses `$FLUTTER`, else `flutter` on PATH |
 | `upload` | Uploads the `.aab` and assigns it to a track. |
 | `release` | All three, in order. |
 
@@ -166,8 +202,8 @@ Play notifies nobody when a build goes out, and the app has no update check, so 
 a successful upload the publisher asks the NAS gateway to broadcast "a new version is
 available" to every user — in Czech or English, whichever each person's app is set to.
 
-The gateway holds the delay (default 300 s), not this script, so the laptop can be
-closed right after a release. Play needs those few minutes before it actually serves
+The gateway holds the delay (default 300 s), not this script, so the publisher returns
+as soon as the upload is committed. Play needs those few minutes before it actually serves
 the new build; announcing at commit time points people at a version it will not give
 them yet.
 
@@ -202,10 +238,10 @@ comes only from inviting the service account as a Play Console user (step 3).
    account email, and under *App permissions* add `mattyzem.nas` with *Release to
    testing tracks* (and *Release to production* if wanted). Propagation takes a few
    minutes.
-4. Store the JSON outside the repo and point the tool at it:
+4. Store the JSON on the NAS, outside the repo, and point the tool at it:
    ```bash
-   chmod 600 ~/.config/play/nas-app.json
-   export PLAY_SERVICE_ACCOUNT_JSON=~/.config/play/nas-app.json
+   chmod 600 /boot/config/app-secrets/play-service-account.json
+   export PLAY_SERVICE_ACCOUNT_JSON=/boot/config/app-secrets/play-service-account.json
    ```
 
 `play_publish.py check` prints these steps itself if credentials are missing. The app
@@ -220,3 +256,12 @@ cannot create a listing.
 - `lib/season.dart` — Season screen, episode sheet, and the TMDb + Sonarr season/episode merge.
 - `lib/api.dart` — gateway client (Dio) + token storage + biometric/remember-me auth; TMDb via the gateway's `/tmdb` proxy.
 - `lib/i18n.dart` — English/Czech strings, `tr()`, `LangAware` mixin, language toggle.
+- `lib/client_log.dart` — the app's log, batched to the gateway's `/client-log`.
+- `lib/notification_settings.dart` — the mute switches and the quiet-hours explanation.
+- `lib/trash_screen.dart` — the Trash screen (restore deleted titles); `daysText()` plurals.
+- `lib/user_permissions.dart` — the "Can download in Jellyfin" switch in the user dialog.
+- `lib/web_push.dart` (+ `web_push_web.dart`, `web_push_stub.dart`) — "Notifications on this device" for the web build, incl. Send a test.
+- `web/` — `push.js` / `push-sw.js` (Web Push service worker), `flutter_bootstrap.js`, icons.
+- `android/app/src/main/kotlin/com/matty/nas/nas_app/` — `MainActivity`, the Android Auto car app (`NasCarAppService`, `NasApiClient`, `screens/`).
+- `scripts/` — `build_android.sh`, `build_web.sh`, `play_publish.py` (+ `tests/`).
+- `VERSION` — the app version (`1.1.6+22`), mirrored into `pubspec.yaml` by `play_publish.py bump`.

@@ -73,7 +73,7 @@ and the Dart source are common. Realistic shape:
 
 | | Android (done) | iOS (pending) |
 |---|---|---|
-| Build host | this Linux box | macOS only |
+| Build host | the NAS (`scripts/build_android.sh`) | macOS only |
 | Signing | `upload-keystore.jks` + `key.properties` | certs + provisioning profiles, via Keychain |
 | Artefact | `.aab` | `.ipa` |
 | Credentials | Play service-account JSON | App Store Connect `.p8` + issuer/key ID |

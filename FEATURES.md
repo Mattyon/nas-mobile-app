@@ -51,7 +51,7 @@ Complete list of everything the app and gateway can do.
 
 ### Downloads Screen
 - **Active** tab: downloading + queued torrents, sorted by qBittorrent priority
-  - ▲/▼ buttons per tile for priority adjustment (optimistic update + 5s timer pause to prevent snap-back)
+  - Drag a tile to reorder priority (optimistic update + 5 s timer pause to prevent snap-back)
   - Red stop button on the left of each tile — confirmation dialog → removes torrent + all partial files, cleans up Radarr/Sonarr queue records (season packs handled via bulk delete of all queue items)
   - Human-readable state labels (e.g. "Stalled — no peers" instead of raw `stalledDL`)
   - Per-tile: name, progress bar, speed (MB/s), ETA, state
@@ -77,7 +77,8 @@ Complete list of everything the app and gateway can do.
 ### Library
 - List view of all fully imported movies and TV shows — shows poster thumbnail, title, year, size (GB), and on-disk status
 - Tap → full detail view with all metadata (same as search)
-- Admin-only delete from detail view (removes files from disk)
+- Alphabetical (by sort title, sorted by the gateway)
+- Admin-only delete: the trash icon on each row moves the title to the **Trash** (☰ → Trash), restorable for `RECYCLE_BIN_DAYS` days, then deleted for good
 - Search within library
 
 ### Notifications Bell (AppBar)
@@ -85,10 +86,12 @@ Complete list of everything the app and gateway can do.
 - Tapping the bell opens a bottom sheet and automatically marks all as read (`POST /notifications/read`)
 - "Clear all" button dismisses all notifications
 - Timestamps shown right-aligned in each row: "now" (<1 min), "5m" (<1 h), "2h" (<24 h), "3d" (<7 d), "8.6." (older)
-- Receives: download complete, quality alerts, new episodes found, download failures
-- **In-app system notifications** — two Android notification channels:
-  - `downloads`: fires when a torrent completes (works in foreground + background)
-  - `nas_alerts`: fires for gateway alerts (health, quality, new episodes) detected on each 60 s poll
+- Receives what the gateway's rules send this account (nas-stack `ai-gateway/app/notify_rules.py`): ready to watch, download problems, new seasons, chat replies, new app version; server alerts to the admin only. Each kind can be muted (⚙ in the sheet).
+- **In-app system notifications** — Android notification channels:
+  - `nas_alerts` "NAS Alerts": gateway notifications, arriving through the foreground service's `/notifications/stream`, the 60 s in-app poll, or the 15-min WorkManager poll
+  - `nas_alerts_quiet` "NAS Alerts (night)": the same, without sound, for notifications the gateway marks silent (quiet hours 23:00-07:00)
+  - `nas_push_listener_v2` "Background connection" (MIN importance): keeps the foreground service alive
+  - The old `downloads` channel ("Download complete") was dropped and is deleted on start
   - Only genuinely new notifications trigger system alerts (baseline is set silently on first launch poll)
   - Up to 3 new notifications are surfaced per poll cycle
   - SharedPreferences key `last_notif_id` (int) persists the highest seen notification ID across launches to prevent duplicate alerts
@@ -119,7 +122,7 @@ Complete list of everything the app and gateway can do.
 | Grant AI access | Only a superadmin can toggle AI access for another user |
 
 ### Help / Connect Screen
-Accessible via the **?** icon in the AppBar (visible from the main tabs). Step-by-step guides for connecting any device to Jellyfin.
+Opened from the ☰ menu (**Help / Connect**). Step-by-step guides for connecting any device to Jellyfin.
 
 **Home Network tab** — uses local IP:
 - Smart TV (Samsung, LG): App Store → search "Jellyfin" → Add server → local address
@@ -280,9 +283,5 @@ Jellyfin sessions will now appear in the app's **Media sessions** screen alongsi
 
 ## Known Gaps / TODOs
 
-- **S03, S09E03 import**: Season 3 and S09E03 files are in the torrent folder but not imported by Sonarr. Need Sonarr Manual Import or a forced rescan.
-- **S11 episodes**: Only 5/22 episodes of Season 11 are in the library; 17 are missing entirely. Re-grab needed.
-- **S11E16 / S11E19**: SD quality (HDTV x264-LOL, ~178–226 MB). Should be replaced with 1080p.
-- **S12E03**: 720p instead of 1080p like the rest of the season. Should be re-grabbed at best quality.
 - **Sonarr auto-search**: Disabled by default in gateway (to avoid unwanted automatic downloads). New-episode CRON handles this at 3 AM.
-- **ntfy push**: Users need the ntfy Android app subscribed to the `nas-alerts` topic to receive push notifications when the NAS app is in the background.
+- **Background push**: no ntfy app needed -- the app's own foreground service holds `/notifications/stream`; if Android kills it, the 15-min WorkManager poll still delivers.
