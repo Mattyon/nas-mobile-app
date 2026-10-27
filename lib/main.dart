@@ -16,6 +16,7 @@ import 'client_log.dart';
 import 'detail.dart';
 import 'i18n.dart';
 import 'notification_settings.dart';
+import 'tailscale_screen.dart';
 import 'trash_screen.dart';
 import 'user_permissions.dart';
 import 'web_push.dart';
@@ -1197,6 +1198,9 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                   } else if (v == 'tapo') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const TapoDevicesScreen()));
+                  } else if (v == 'tailscale') {
+                    Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => const TailscaleScreen()));
                   } else if (v == 'camera') {
                     Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const CameraListScreen()));
@@ -1279,6 +1283,15 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                         const Icon(Icons.smart_toy_outlined, size: 20),
                         const SizedBox(width: 12),
                         Text(tr('aiChats')),
+                      ]),
+                    ),
+                  if (Api.I.isSuperadmin)
+                    PopupMenuItem<String>(
+                      value: 'tailscale',
+                      child: Row(children: <Widget>[
+                        const Icon(Icons.vpn_lock_outlined, size: 20),
+                        const SizedBox(width: 12),
+                        Text(tr('tailscaleRemoteAccess')),
                       ]),
                     ),
                   if (Api.I.isSuperadmin)

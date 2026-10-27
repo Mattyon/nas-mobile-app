@@ -397,6 +397,18 @@ class Api {
     return r.data ?? <String, dynamic>{};
   }
 
+  /// Tailscale on the NAS (superadmin): {on, backend, online, routes, pending, stale,
+  /// changed_at, changed_by, error}.
+  Future<Map<String, dynamic>> tailscale() async {
+    final r = await _dio.get<Map<String, dynamic>>('/tailscale');
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> setTailscale(bool on) async {
+    final r = await _dio.post<Map<String, dynamic>>('/tailscale', data: <String, bool>{'on': on});
+    return r.data ?? <String, dynamic>{};
+  }
+
   Future<Map<String, dynamic>> restoreFromTrash(String id) async {
     final r = await _dio.post<Map<String, dynamic>>('/trash/$id/restore');
     return r.data ?? <String, dynamic>{};

@@ -41,6 +41,11 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
   VIEW/https `<queries>` entry in AndroidManifest). **Superadmins**: AI chat
   (multi-conversation, server-side history; needs the `ai_access` flag) and **Cameras**
   (list, add, rename, delete, live feed).
+- **Remote access (Tailscale)** (superadmins, menu; `lib/tailscale_screen.dart`) — one switch
+  turns Tailscale on the NAS on or off, so the home network is reachable over Tailscale only
+  while you are away. The NAS applies it within a minute; the screen refreshes until it has,
+  and shows who changed it last. The app itself never goes through Tailscale, so it can turn
+  it back on from anywhere (gateway `GET/POST /tailscale`, nas-stack `host/tailscale-switch.sh`).
 - **Android Auto / AAOS** (`android/app/src/main/kotlin/.../NasCarAppService.kt`,
   `screens/`) — Jellyfin video browser and player, downloads, search and sockets in the
   car; the Jellyfin URL comes from the menu setting. The car signs in to Jellyfin with a
