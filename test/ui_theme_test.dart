@@ -4,7 +4,7 @@ import 'package:nas_app/i18n.dart';
 void main() {
   group('i18n — theme toggle keys', () {
     const List<String> keys = <String>[
-      'darkMode', 'lightMode', 'menuServer', 'menuHome', 'menuSettings',
+      'darkMode', 'lightMode', 'menuServer', 'menuHouse', 'menuSettings',
     ];
 
     for (final String key in keys) {

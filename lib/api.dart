@@ -6,6 +6,7 @@ import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'client_log.dart';
+import 'mjpeg.dart';
 
 
 /// The gateway refused a login because too many recent attempts from this client
@@ -754,6 +755,18 @@ class Api {
       options: Options(responseType: ResponseType.bytes),
     );
     return Uint8List.fromList(r.data!);
+  }
+
+  /// The live feed (MJPEG) as frames; [hd] is the camera's main stream. Ends when
+  /// [cancel] is cancelled or the connection drops.
+  Future<Stream<Uint8List>> cameraLive(String id, {bool hd = false, CancelToken? cancel}) async {
+    final Response<ResponseBody> r = await _dio.get<ResponseBody>(
+      '/cameras/$id/live',
+      queryParameters: <String, dynamic>{if (hd) 'hd': 'true'},
+      cancelToken: cancel,
+      options: Options(responseType: ResponseType.stream, receiveTimeout: const Duration(seconds: 20)),
+    );
+    return mjpegFrames(r.data!.stream);
   }
 
   // ── Tapo smart sockets ──────────────────────────────────────────────────────

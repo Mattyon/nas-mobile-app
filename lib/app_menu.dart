@@ -5,15 +5,16 @@ import 'i18n.dart';
 import 'tailscale_screen.dart';
 
 // The ☰ menu, grouped (owner, 2026-10-27: "it contains too many items at once. Let's just
-// group these within a few pages"). The main menu holds a few entries; a group opens a page
-// with its items. Only what the role may use is shown, and a group with a single visible
-// item is shown as that item, never as a one-item page.
+// group these within a few pages"). The main menu holds a few entries. A group marked › is a
+// submenu: it replaces the menu with its items and a row back to the main menu. Only House
+// opens a page (it holds the Tailscale switch), so it has no ›. Only what the role may use
+// is shown, and a group with a single visible item is shown as that item.
 //
-//   AI assistant (superadmin)
+//   AI chats (superadmin)
 //   Server ›     health check, Uptime Kuma, speed test, media sessions      (admin)
 //   Downloads ›  speed limits (admin), check for new episodes, trash (admin)
-//   Home ›       remote access / Tailscale (superadmin, a switch right on the page),
-//                smart sockets (admin), cameras (superadmin)
+//   House        a page: remote access / Tailscale (superadmin, a switch right on the
+//                page), smart sockets (admin), cameras (superadmin)
 //   Users (admin)
 //   Settings & help ›  dark/light mode, Jellyfin URL, notifications on this device (web), help
 //   Log out
@@ -26,6 +27,12 @@ class MenuGroup {
   final IconData icon;
   final String titleKey;
   final List<String> items;
+
+  /// House opens a page; every other group is a submenu.
+  bool get isPage => id == 'house';
+
+  /// The menu value that opens it.
+  String get value => isPage ? 'page:$id' : 'sub:$id';
 }
 
 /// A main-menu entry: one action, or a group of them on its own page.
@@ -65,7 +72,7 @@ const List<Object> _layout = <Object>[
   'ai',
   MenuGroup('server', Icons.dns_outlined, 'menuServer', <String>['health', 'kuma', 'speedtest', 'sessions']),
   MenuGroup('downloads', Icons.download_outlined, 'downloads', <String>['speed', 'neweps', 'trash']),
-  MenuGroup('home', Icons.home_outlined, 'menuHome', <String>['tailscale', 'tapo', 'camera']),
+  MenuGroup('house', Icons.home_outlined, 'menuHouse', <String>['tailscale', 'tapo', 'camera']),
   'users',
   MenuGroup('settings', Icons.settings_outlined, 'menuSettings', <String>['theme', 'jellyfin', 'webpush', 'help']),
   'logout',
@@ -89,6 +96,45 @@ List<MenuNode> buildAppMenu({required bool admin, required bool superadmin, bool
   }
   return out;
 }
+
+/// The group a main-menu value ('sub:server', 'page:house') opens, for this role.
+MenuGroup? menuGroupFor(String value, {required bool admin, required bool superadmin, bool web = kIsWeb}) {
+  for (final MenuNode n in buildAppMenu(admin: admin, superadmin: superadmin, web: web)) {
+    if (n.group != null && n.group!.value == value) return n.group;
+  }
+  return null;
+}
+
+PopupMenuItem<String> _row(String value, IconData icon, String label, {bool chevron = false}) =>
+    PopupMenuItem<String>(
+      key: ValueKey<String>('menu-$value'),
+      value: value,
+      child: Row(children: <Widget>[
+        Icon(icon, size: 20),
+        const SizedBox(width: 12),
+        Expanded(child: Text(label)),
+        if (chevron) const Icon(Icons.chevron_right, size: 20),
+      ]),
+    );
+
+/// The main menu's rows (after the name header): a submenu group with ›, House without.
+List<PopupMenuEntry<String>> mainMenuEntries(List<MenuNode> nodes, {bool dark = false}) =>
+    <PopupMenuEntry<String>>[
+      for (final MenuNode n in nodes) ...<PopupMenuEntry<String>>[
+        if (n.action == 'logout') const PopupMenuDivider(),
+        if (n.group != null)
+          _row(n.group!.value, n.group!.icon, tr(n.group!.titleKey), chevron: !n.group!.isPage)
+        else
+          _row(n.action!, menuIcon(n.action!, dark: dark), menuLabel(n.action!, dark: dark)),
+      ],
+    ];
+
+/// A submenu: back to the main menu, then the group's items.
+List<PopupMenuEntry<String>> submenuEntries(MenuGroup g, {bool dark = false}) => <PopupMenuEntry<String>>[
+      _row('back', Icons.chevron_left, tr(g.titleKey)),
+      const PopupMenuDivider(),
+      for (final String id in g.items) _row(id, menuIcon(id, dark: dark), menuLabel(id, dark: dark)),
+    ];
 
 String menuLabel(String id, {bool dark = false}) {
   switch (id) {

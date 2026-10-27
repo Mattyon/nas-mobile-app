@@ -32,14 +32,17 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
   with size, date and days left; **Restore** puts the files back and adds the title to
   Radarr/Sonarr again (gateway `GET /trash`, `POST /trash/{id}/restore`).
 - **The ☰ menu** (`lib/app_menu.dart`), grouped since 1.1.8 (owner, 2026-10-27: too many
-  items at once): **AI assistant** (superadmin) · **Server ›** health check, Uptime Kuma,
+  items at once): **AI chats** (superadmin) · **Server ›** health check, Uptime Kuma,
   speedtest, media sessions (admin) · **Downloads ›** speed limits (admin), check new
-  episodes, trash (admin) · **Home ›** remote access / Tailscale (superadmin, the switch is on
+  episodes, trash (admin) · **House** remote access / Tailscale (superadmin, the switch is on
   the page itself), smart sockets (admin), cameras (superadmin) · **Users** (admin) ·
   **Settings & help ›** light/dark theme, Jellyfin URL, notifications on this device (web
-  build), help / connect · **Log out**. Only what the role may use is shown, and a group with
-  a single visible item is shown as that item (a regular user sees: check new episodes,
-  Settings & help, Log out). "Kill app" was removed (no longer needed).
+  build), help / connect · **Log out**. Groups with › are submenus (1.1.9): the menu shows
+  their items in place, with a row back to the main menu on top; only House opens a page.
+  Only what the role may use is shown, and a group with a single visible item is shown as
+  that item (a regular user sees: check new episodes, Settings & help, Log out). "Kill app"
+  was removed (no longer needed). The Jellyfin URL is a setting of this phone (Android Auto
+  uses it), so everyone can set it.
   What the items do -- **Admins**: media sessions (Plex + Jellyfin), speed limits and pause/resume,
   user management (incl. the per-user **"Can download in Jellyfin"** switch, on by
   default, with a marker on users who have it off), **Smart sockets** (Tapo P100: on/off,
@@ -47,7 +50,9 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
   check, and **Uptime Kuma** (opens https://kuma.mattyzem.com in the browser; needs the
   VIEW/https `<queries>` entry in AndroidManifest). **Superadmins**: AI chat
   (multi-conversation, server-side history; needs the `ai_access` flag) and **Cameras**
-  (list, add, rename, delete, live feed).
+  (list, add, rename, delete, live feed: real time since 1.1.9 -- the gateway's MJPEG
+  `/cameras/{id}/live`, cut into frames by `lib/mjpeg.dart`, reconnecting on its own, with an
+  HD/SD switch; the web build keeps a snapshot every 3 s).
 - **Remote access (Tailscale)** (superadmins, ☰ → Home; `lib/tailscale_screen.dart`) — one switch
   turns Tailscale on the NAS on or off, so the home network is reachable over Tailscale only
   while you are away. The NAS applies it within a minute; the screen refreshes until it has,
@@ -74,6 +79,11 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
   `nas_alerts_quiet` "NAS Alerts (night)" (quiet hours, no sound), `nas_push_listener_v2`
   "Background connection" (MIN importance); the old `downloads` channel is deleted on
   start (the "Download complete" notification was dropped — "Ready to watch" says it).
+  **Shown once** (1.1.9): the push service, the background poll and the in-app bell run in
+  separate isolates; each re-reads the shared `last_notif_id` before showing, and Android is
+  told `onlyAlertOnce`, so the same notification never alerts twice (1.1.8's release notice
+  did). A "new app version" notice for the version already installed is dropped
+  (`lib/notification_filter.dart`; the gateway also skips users whose phones report it).
 - **Notification settings** (the ⚙ in the notifications sheet, `lib/notification_settings.dart`) — one switch per kind of notification, stored on the gateway (`/notifications/prefs`); server alerts for the admin are not listed and cannot be muted. Between 23:00 and 07:00 the gateway marks notifications `silent` (unless you asked for the thing during the night) and the app shows them on a second, silent channel, "NAS Alerts (night)"; the web build's push is silent too.
 - **Help / Connect screen** — step-by-step Jellyfin setup for TV, phone, and browser on both local network and remote (Cloudflare Tunnel / Tailscale).
 

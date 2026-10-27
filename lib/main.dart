@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 import 'api.dart';
 import 'app_menu.dart';
+import 'notification_filter.dart';
 import 'client_log.dart';
 import 'detail.dart';
 import 'i18n.dart';
@@ -68,7 +70,7 @@ Future<void> _initNotifications() async {
 }
 
 Future<void> _showSystemNotification(Map<String, dynamic> n) async {
-  if (kIsWeb) return;
+  if (kIsWeb || alreadyInstalled(n, kAppVersion)) return;
   final bool cs = lang.value == 'cs';
   final String title = (cs
           ? (n['title_cs']?.toString() ?? n['title']?.toString())
@@ -93,6 +95,8 @@ Future<void> _showSystemNotification(Map<String, dynamic> n) async {
         priority: quiet ? Priority.low : Priority.high,
         playSound: !quiet,
         enableVibration: !quiet,
+        // The same notification shown again by another path updates it silently.
+        onlyAlertOnce: true,
         icon: '@mipmap/ic_launcher',
       ),
     ),
@@ -185,6 +189,9 @@ Future<void> _bgPollNotifications() async {
   final SharedPreferences prefs = await SharedPreferences.getInstance();
   final String baseUrl =
       prefs.getString('baseUrl') ?? 'https://nas.mattyzem.com';
+  // Re-read: the app, the push service and this poll each run in their own isolate with a
+  // cached copy, and a stale mark showed the same notification twice (2026-10-27).
+  await prefs.reload();
   final int lastId = prefs.getInt('last_notif_id') ?? 0;
   final String appLang = prefs.getString('app_lang') ?? 'en';
 
@@ -219,7 +226,7 @@ Future<void> _bgPollNotifications() async {
   await flnp.initialize(settings: const InitializationSettings(android: android));
 
   final bool cs = appLang == 'cs';
-  for (final Map<String, dynamic> n in fresh.take(3)) {
+  for (final Map<String, dynamic> n in fresh.where((Map<String, dynamic> n) => !alreadyInstalled(n, kAppVersion)).take(3)) {
     final String title = (cs
             ? (n['title_cs']?.toString() ?? n['title']?.toString())
             : n['title']?.toString()) ??
@@ -243,6 +250,7 @@ Future<void> _bgPollNotifications() async {
           priority: quiet ? Priority.low : Priority.high,
           playSound: !quiet,
           enableVibration: !quiet,
+          onlyAlertOnce: true,
           icon: '@mipmap/ic_launcher',
         ),
       ),
@@ -570,6 +578,11 @@ class _NotificationBellState extends State<NotificationBell> with LangAware {
       final List<dynamic> items = (data['notifications'] as List<dynamic>?) ?? <dynamic>[];
       final int unread = (data['unread_count'] as int?) ?? 0;
 
+      // The push service may have shown some already: start from the shared mark.
+      final SharedPreferences shared = await SharedPreferences.getInstance();
+      await shared.reload();
+      final int stored = shared.getInt('last_notif_id') ?? 0;
+      if (stored > _lastSeenId) _lastSeenId = stored;
       // Detect notifications newer than the last one we processed.
       final List<Map<String, dynamic>> fresh = items
           .whereType<Map<String, dynamic>>()
@@ -1153,16 +1166,48 @@ class _HomeShellState extends State<HomeShell> with LangAware {
     );
   }
 
-  /// A main-menu choice: a group opens its page (whose items come back here), anything
-  /// else is carried out.
-  Future<void> _menuSelected(BuildContext context, String v) async {
-    if (v.startsWith('group:')) {
-      final MenuGroup? g = buildAppMenu(admin: Api.I.isAdmin, superadmin: Api.I.isSuperadmin)
-          .map((MenuNode n) => n.group)
-          .whereType<MenuGroup>()
-          .where((MenuGroup g) => 'group:${g.id}' == v)
-          .firstOrNull;
-      if (g == null) return;
+  final GlobalKey _menuKey = GlobalKey();
+
+  /// The ☰ menu (app_menu.dart). A submenu replaces it, with a row back to the main
+  /// menu; House opens its page; anything else is carried out.
+  Future<void> _openMenu(BuildContext context, {MenuGroup? group}) async {
+    final RenderBox? button = _menuKey.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? overlay = Navigator.of(context).overlay?.context.findRenderObject() as RenderBox?;
+    if (button == null || overlay == null) return;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(button.localToGlobal(Offset(0, button.size.height), ancestor: overlay),
+          button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay)),
+      Offset.zero & overlay.size,
+    );
+    final bool dark = themeMode.value == ThemeMode.dark;
+    final String? v = await showMenu<String>(
+      context: context,
+      position: position,
+      items: group != null
+          ? submenuEntries(group, dark: dark)
+          : <PopupMenuEntry<String>>[
+              PopupMenuItem<String>(
+                enabled: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(Api.I.displayName ?? Api.I.username ?? '—',
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text(Api.I.role, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              ...mainMenuEntries(buildAppMenu(admin: Api.I.isAdmin, superadmin: Api.I.isSuperadmin), dark: dark),
+            ],
+    );
+    if (v == null || !context.mounted) return;
+    if (v == 'back') return _openMenu(context);
+    final MenuGroup? g = v.startsWith('sub:') || v.startsWith('page:')
+        ? menuGroupFor(v, admin: Api.I.isAdmin, superadmin: Api.I.isSuperadmin)
+        : null;
+    if (g != null && !g.isPage) return _openMenu(context, group: g);
+    if (g != null) {
       await Navigator.of(context).push(MaterialPageRoute<void>(
           builder: (_) => MenuGroupPage(group: g, themeMode: themeMode, onSelect: (String id) => _menuAction(context, id))));
       return;
@@ -1242,40 +1287,11 @@ class _HomeShellState extends State<HomeShell> with LangAware {
             ValueListenableBuilder<ThemeMode>(
               valueListenable: themeMode,
               builder: (BuildContext ctx2, ThemeMode mode, Widget? _) =>
-                  PopupMenuButton<String>(
+                  IconButton(
+                key: _menuKey,
                 icon: const Icon(Icons.menu),
-                onSelected: (String v) => _menuSelected(context, v),
-                itemBuilder: (BuildContext ctx) => <PopupMenuEntry<String>>[
-                  PopupMenuItem<String>(
-                    enabled: false,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(Api.I.displayName ?? Api.I.username ?? '—',
-                            style: const TextStyle(fontWeight: FontWeight.w600)),
-                        Text(Api.I.role,
-                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuDivider(),
-                  // Grouped (app_menu.dart): a few entries here, the rest on group pages.
-                  for (final MenuNode n in buildAppMenu(admin: Api.I.isAdmin, superadmin: Api.I.isSuperadmin)) ...<PopupMenuEntry<String>>[
-                    if (n.action == 'logout') const PopupMenuDivider(),
-                    PopupMenuItem<String>(
-                      key: ValueKey<String>('menu-${n.action ?? 'group-${n.group!.id}'}'),
-                      value: n.action ?? 'group:${n.group!.id}',
-                      child: Row(children: <Widget>[
-                        Icon(n.group?.icon ?? menuIcon(n.action!, dark: mode == ThemeMode.dark), size: 20),
-                        const SizedBox(width: 12),
-                        Expanded(child: Text(n.group != null
-                            ? tr(n.group!.titleKey)
-                            : menuLabel(n.action!, dark: mode == ThemeMode.dark))),
-                        if (n.group != null) const Icon(Icons.chevron_right, size: 20),
-                      ]),
-                    ),
-                  ],
-                ],
+                tooltip: MaterialLocalizations.of(ctx2).showMenuTooltip,
+                onPressed: () => _openMenu(context),
               ),
             ),
           ],
@@ -4338,18 +4354,60 @@ class _CameraFeedScreenState extends State<CameraFeedScreen> with LangAware {
   bool _loading = true;
   String? _error;
   Timer? _timer;
+  // Live (owner, 2026-10-27: "should be real time"): the gateway's MJPEG feed, reconnected
+  // when it drops. The web build cannot read an endless response through Dio, so it keeps
+  // the 3-second snapshots.
+  bool _hd = false;
+  CancelToken? _cancel;
+  StreamSubscription<Uint8List>? _sub;
 
   @override
   void initState() {
     super.initState();
-    _fetch();
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _fetch());
+    if (kIsWeb) {
+      _fetch();
+      _timer = Timer.periodic(const Duration(seconds: 3), (_) => _fetch());
+    } else {
+      _startLive();
+    }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _stopLive();
     super.dispose();
+  }
+
+  void _stopLive() {
+    _sub?.cancel();
+    _sub = null;
+    _cancel?.cancel();
+    _cancel = null;
+  }
+
+  Future<void> _startLive() async {
+    _stopLive();
+    final CancelToken cancel = _cancel = CancelToken();
+    try {
+      final Stream<Uint8List> frames = await Api.I.cameraLive(widget.id, hd: _hd, cancel: cancel);
+      if (!mounted || cancel.isCancelled) return;
+      _sub = frames.listen(
+        (Uint8List f) { if (mounted) setState(() { _frame = f; _loading = false; _error = null; }); },
+        onError: (Object e) => _retryLive(e),
+        onDone: () => _retryLive(null),
+        cancelOnError: true,
+      );
+    } catch (e) {
+      _retryLive(e);
+    }
+  }
+
+  void _retryLive(Object? e) {
+    if (!mounted || (_cancel?.isCancelled ?? true)) return;
+    setState(() { if (e != null) _error = e.toString(); _loading = _frame == null && e == null; });
+    _timer?.cancel();
+    _timer = Timer(const Duration(seconds: 2), () { if (mounted) _startLive(); });
   }
 
   Future<void> _fetch() async {
@@ -4370,6 +4428,15 @@ class _CameraFeedScreenState extends State<CameraFeedScreen> with LangAware {
           const SizedBox(width: 8),
           Text(widget.name),
         ]),
+        actions: <Widget>[
+          if (!kIsWeb)
+            IconButton(
+              key: const ValueKey<String>('camera-hd'),
+              tooltip: _hd ? 'SD' : 'HD',
+              icon: Icon(_hd ? Icons.hd : Icons.sd),
+              onPressed: () { setState(() => _hd = !_hd); _startLive(); },
+            ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

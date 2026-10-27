@@ -17,14 +17,14 @@ void main() {
       'ai',
       'server:health,kuma,speedtest,sessions',
       'downloads:speed,neweps,trash',
-      'home:tailscale,tapo,camera',
+      'house:tailscale,tapo,camera',
       'users',
       'settings:theme,jellyfin,help',
       'logout',
     ]);
   });
 
-  test('admin: no AI; Home has only smart sockets, so it is a plain item', () {
+  test('admin: no AI; House has only smart sockets, so it is a plain item', () {
     expect(menu(admin: true), <String>[
       'server:health,kuma,speedtest,sessions',
       'downloads:speed,neweps,trash',
@@ -55,7 +55,7 @@ void main() {
         expect(menuLabel(id), isNot(equals(id)), reason: '$l $id');
         expect(menuIcon(id), isNot(Icons.circle_outlined), reason: id);
       }
-      for (final String k in <String>['menuServer', 'menuHome', 'menuSettings', 'downloads']) {
+      for (final String k in <String>['menuServer', 'menuHouse', 'menuSettings', 'downloads']) {
         expect(tr(k), isNot(equals(k)), reason: '$l $k');
       }
     }
@@ -75,9 +75,9 @@ void main() {
     expect(picked, <String>['speedtest']);
   });
 
-  testWidgets('Home: the Tailscale switch is on the page itself', (WidgetTester t) async {
+  testWidgets('House: the Tailscale switch is on the page itself', (WidgetTester t) async {
     final MenuGroup g = buildAppMenu(admin: true, superadmin: true, web: false)
-        .firstWhere((MenuNode n) => n.group?.id == 'home').group!;
+        .firstWhere((MenuNode n) => n.group?.id == 'house').group!;
     await t.pumpWidget(MaterialApp(home: MenuGroupPage(
         group: g, themeMode: ValueNotifier<ThemeMode>(ThemeMode.light), onSelect: (String id) async {},
         tailscale: const Text('TAILSCALE-SWITCH'))));
@@ -95,5 +95,47 @@ void main() {
     mode.value = ThemeMode.dark;
     await t.pump();
     expect(find.text(tr('lightMode')), findsOneWidget);
+  });
+
+  test('only House opens a page; the other groups are submenus', () {
+    final List<MenuGroup> groups = buildAppMenu(admin: true, superadmin: true, web: false)
+        .map((MenuNode n) => n.group).whereType<MenuGroup>().toList();
+    expect(<String>[for (final MenuGroup g in groups) g.value],
+        <String>['sub:server', 'sub:downloads', 'page:house', 'sub:settings']);
+    expect(menuGroupFor('sub:server', admin: true, superadmin: true, web: false)!.items.first, 'health');
+    expect(menuGroupFor('sub:server', admin: false, superadmin: false, web: false), isNull);
+  });
+
+  Future<void> open(WidgetTester t, List<PopupMenuEntry<String>> items) async {
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: Builder(builder: (BuildContext c) =>
+        TextButton(onPressed: () => showMenu<String>(context: c, position: RelativeRect.fill, items: items),
+            child: const Text('open'))))));
+    await t.tap(find.text('open'));
+    await t.pumpAndSettle();
+  }
+
+  bool chevron(String key) => find.descendant(of: find.byKey(ValueKey<String>(key)),
+      matching: find.byIcon(Icons.chevron_right)).evaluate().isNotEmpty;
+
+  testWidgets('main menu: › on submenus, none on House', (WidgetTester t) async {
+    await open(t, mainMenuEntries(buildAppMenu(admin: true, superadmin: true, web: false)));
+    expect(chevron('menu-sub:server'), isTrue);
+    expect(chevron('menu-sub:downloads'), isTrue);
+    expect(chevron('menu-sub:settings'), isTrue);
+    expect(chevron('menu-page:house'), isFalse);
+    expect(find.text('House'), findsOneWidget);
+    expect(find.text('AI chats'), findsOneWidget);
+  });
+
+  testWidgets('a submenu: its items and a way back to the main menu', (WidgetTester t) async {
+    final List<PopupMenuEntry<String>> sub = submenuEntries(
+        menuGroupFor('sub:downloads', admin: true, superadmin: true, web: false)!);
+    expect(<String?>[for (final PopupMenuEntry<String> e in sub) if (e is PopupMenuItem<String>) e.value],
+        <String?>['back', 'speed', 'neweps', 'trash']);
+    await open(t, sub);
+    expect(find.descendant(of: find.byKey(const ValueKey<String>('menu-back')), matching: find.text('Downloads')),
+        findsOneWidget);
+    expect(find.descendant(of: find.byKey(const ValueKey<String>('menu-back')), matching: find.byIcon(Icons.chevron_left)),
+        findsOneWidget);
   });
 }
