@@ -43,7 +43,12 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
   (list, add, rename, delete, live feed).
 - **Android Auto / AAOS** (`android/app/src/main/kotlin/.../NasCarAppService.kt`,
   `screens/`) — Jellyfin video browser and player, downloads, search and sockets in the
-  car; the Jellyfin URL comes from the menu setting.
+  car; the Jellyfin URL comes from the menu setting. The car signs in to Jellyfin with a
+  token the phone app stores on every start (`aa_jellyfin_token`). Jellyfin 12 only accepts
+  the `Authorization: MediaBrowser ...` header and the `ApiKey=` query parameter -- with the
+  old `X-Emby-*` headers and `api_key=` every video in the car failed with 401 (fixed in
+  1.1.7, 2026-10-27). Car playback errors go to the gateway log (`/client-log`, device
+  `android-auto`).
 - **App log to the NAS** (`lib/client_log.dart`) — API calls, errors, lifecycle and
   background tasks (credentials masked) go to the gateway's `POST /client-log` every
   minute, when the app goes to the background and after an error; with the NAS's
