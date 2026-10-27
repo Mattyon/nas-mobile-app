@@ -28,12 +28,19 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
   deleted for good, and the app says so. Shows with gaps get an amber **"N missing"**
   badge, and so do their incomplete seasons. Filter to titles held in **Czech** or
   **English** (🇨🇿 / 🇬🇧 chips); the choice is remembered across app restarts.
-- **Trash** (admin, ☰ menu → Trash, `lib/trash_screen.dart`) — titles deleted in the app
+- **Trash** (admin, ☰ menu → Downloads → Trash, `lib/trash_screen.dart`) — titles deleted in the app
   with size, date and days left; **Restore** puts the files back and adds the title to
   Radarr/Sonarr again (gateway `GET /trash`, `POST /trash/{id}/restore`).
-- **The ☰ menu** — for everyone: Check new episodes, Jellyfin URL, light/dark theme,
-  Notifications on this device (web build), Help / Connect, Log out, Kill app.
-  **Admins** also get: media sessions (Plex + Jellyfin), speed limits and pause/resume,
+- **The ☰ menu** (`lib/app_menu.dart`), grouped since 1.1.8 (owner, 2026-10-27: too many
+  items at once): **AI assistant** (superadmin) · **Server ›** health check, Uptime Kuma,
+  speedtest, media sessions (admin) · **Downloads ›** speed limits (admin), check new
+  episodes, trash (admin) · **Home ›** remote access / Tailscale (superadmin, the switch is on
+  the page itself), smart sockets (admin), cameras (superadmin) · **Users** (admin) ·
+  **Settings & help ›** light/dark theme, Jellyfin URL, notifications on this device (web
+  build), help / connect · **Log out**. Only what the role may use is shown, and a group with
+  a single visible item is shown as that item (a regular user sees: check new episodes,
+  Settings & help, Log out). "Kill app" was removed (no longer needed).
+  What the items do -- **Admins**: media sessions (Plex + Jellyfin), speed limits and pause/resume,
   user management (incl. the per-user **"Can download in Jellyfin"** switch, on by
   default, with a marker on users who have it off), **Smart sockets** (Tapo P100: on/off,
   add/rename/remove, LED, countdown, weekly schedule, usage), speedtest, **Trash**, health
@@ -41,7 +48,7 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
   VIEW/https `<queries>` entry in AndroidManifest). **Superadmins**: AI chat
   (multi-conversation, server-side history; needs the `ai_access` flag) and **Cameras**
   (list, add, rename, delete, live feed).
-- **Remote access (Tailscale)** (superadmins, menu; `lib/tailscale_screen.dart`) — one switch
+- **Remote access (Tailscale)** (superadmins, ☰ → Home; `lib/tailscale_screen.dart`) — one switch
   turns Tailscale on the NAS on or off, so the home network is reachable over Tailscale only
   while you are away. The NAS applies it within a minute; the screen refreshes until it has,
   and shows who changed it last. The app itself never goes through Tailscale, so it can turn

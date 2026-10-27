@@ -12,6 +12,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 import 'api.dart';
+import 'app_menu.dart';
 import 'client_log.dart';
 import 'detail.dart';
 import 'i18n.dart';
@@ -1152,6 +1153,82 @@ class _HomeShellState extends State<HomeShell> with LangAware {
     );
   }
 
+  /// A main-menu choice: a group opens its page (whose items come back here), anything
+  /// else is carried out.
+  Future<void> _menuSelected(BuildContext context, String v) async {
+    if (v.startsWith('group:')) {
+      final MenuGroup? g = buildAppMenu(admin: Api.I.isAdmin, superadmin: Api.I.isSuperadmin)
+          .map((MenuNode n) => n.group)
+          .whereType<MenuGroup>()
+          .where((MenuGroup g) => 'group:${g.id}' == v)
+          .firstOrNull;
+      if (g == null) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => MenuGroupPage(group: g, themeMode: themeMode, onSelect: (String id) => _menuAction(context, id))));
+      return;
+    }
+    await _menuAction(context, v);
+  }
+
+  Future<void> _menuAction(BuildContext context, String v) async {
+    if (v == 'neweps') {
+      try {
+        await Api.I.triggerNewEpisodeCheck();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(tr('newEpsStarted'))));
+        }
+      } catch (_) {}
+    } else if (v == 'trash') {
+      Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const TrashScreen()));
+    } else if (v == 'health') {
+      Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const HealthCheckScreen()));
+    } else if (v == 'kuma') {
+      if (!await openExternalUrl(Api.I.kumaUrl) && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(tr('kumaOpenFailed'))));
+      }
+    } else if (v == 'webpush') {
+      await showWebPushDialog(context);
+    } else if (v == 'speedtest') {
+      Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const SpeedtestScreen()));
+    } else if (v == 'ai') {
+      Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const AiChatsListScreen()));
+    } else if (v == 'tapo') {
+      Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const TapoDevicesScreen()));
+    } else if (v == 'tailscale') {
+      Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const TailscaleScreen()));
+    } else if (v == 'camera') {
+      Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const CameraListScreen()));
+    } else if (v == 'help') {
+      Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const HelpScreen()));
+    } else if (v == 'sessions') {
+      Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const SessionsScreen()));
+    } else if (v == 'users') {
+      Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const UsersScreen()));
+    } else if (v == 'speed') {
+      _showSpeedDialog(context);
+    } else if (v == 'jellyfin') {
+      _showJellyfinSettingsDialog(context);
+    } else if (v == 'theme') {
+      await _toggleTheme();
+    } else if (v == 'logout') {
+      await Api.I.logout();
+      authTick.value++;
+    }
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
@@ -1167,65 +1244,7 @@ class _HomeShellState extends State<HomeShell> with LangAware {
               builder: (BuildContext ctx2, ThemeMode mode, Widget? _) =>
                   PopupMenuButton<String>(
                 icon: const Icon(Icons.menu),
-                onSelected: (String v) async {
-                  if (v == 'neweps') {
-                    try {
-                      await Api.I.triggerNewEpisodeCheck();
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(tr('newEpsStarted'))));
-                      }
-                    } catch (_) {}
-                  } else if (v == 'trash') {
-                    Navigator.of(context).push(MaterialPageRoute<void>(
-                        builder: (_) => const TrashScreen()));
-                  } else if (v == 'health') {
-                    Navigator.of(context).push(MaterialPageRoute<void>(
-                        builder: (_) => const HealthCheckScreen()));
-                  } else if (v == 'kuma') {
-                    if (!await openExternalUrl(Api.I.kumaUrl) && context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(tr('kumaOpenFailed'))));
-                    }
-                  } else if (v == 'webpush') {
-                    await showWebPushDialog(context);
-                  } else if (v == 'speedtest') {
-                    Navigator.of(context).push(MaterialPageRoute<void>(
-                        builder: (_) => const SpeedtestScreen()));
-                  } else if (v == 'ai') {
-                    Navigator.of(context).push(MaterialPageRoute<void>(
-                        builder: (_) => const AiChatsListScreen()));
-                  } else if (v == 'tapo') {
-                    Navigator.of(context).push(MaterialPageRoute<void>(
-                        builder: (_) => const TapoDevicesScreen()));
-                  } else if (v == 'tailscale') {
-                    Navigator.of(context).push(MaterialPageRoute<void>(
-                        builder: (_) => const TailscaleScreen()));
-                  } else if (v == 'camera') {
-                    Navigator.of(context).push(MaterialPageRoute<void>(
-                        builder: (_) => const CameraListScreen()));
-                  } else if (v == 'help') {
-                    Navigator.of(context).push(MaterialPageRoute<void>(
-                        builder: (_) => const HelpScreen()));
-                  } else if (v == 'sessions') {
-                    Navigator.of(context).push(MaterialPageRoute<void>(
-                        builder: (_) => const SessionsScreen()));
-                  } else if (v == 'users') {
-                    Navigator.of(context).push(MaterialPageRoute<void>(
-                        builder: (_) => const UsersScreen()));
-                  } else if (v == 'speed') {
-                    _showSpeedDialog(context);
-                  } else if (v == 'jellyfin') {
-                    _showJellyfinSettingsDialog(context);
-                  } else if (v == 'theme') {
-                    await _toggleTheme();
-                  } else if (v == 'logout') {
-                    await Api.I.logout();
-                    authTick.value++;
-                  } else if (v == 'kill') {
-                    exit(0);
-                  }
-                },
+                onSelected: (String v) => _menuSelected(context, v),
                 itemBuilder: (BuildContext ctx) => <PopupMenuEntry<String>>[
                   PopupMenuItem<String>(
                     enabled: false,
@@ -1240,169 +1259,22 @@ class _HomeShellState extends State<HomeShell> with LangAware {
                     ),
                   ),
                   const PopupMenuDivider(),
-                  if (Api.I.isAdmin)
+                  // Grouped (app_menu.dart): a few entries here, the rest on group pages.
+                  for (final MenuNode n in buildAppMenu(admin: Api.I.isAdmin, superadmin: Api.I.isSuperadmin)) ...<PopupMenuEntry<String>>[
+                    if (n.action == 'logout') const PopupMenuDivider(),
                     PopupMenuItem<String>(
-                      value: 'sessions',
+                      key: ValueKey<String>('menu-${n.action ?? 'group-${n.group!.id}'}'),
+                      value: n.action ?? 'group:${n.group!.id}',
                       child: Row(children: <Widget>[
-                        const Icon(Icons.cast_connected, size: 20),
+                        Icon(n.group?.icon ?? menuIcon(n.action!, dark: mode == ThemeMode.dark), size: 20),
                         const SizedBox(width: 12),
-                        Text(tr('mediaSessions')),
+                        Expanded(child: Text(n.group != null
+                            ? tr(n.group!.titleKey)
+                            : menuLabel(n.action!, dark: mode == ThemeMode.dark))),
+                        if (n.group != null) const Icon(Icons.chevron_right, size: 20),
                       ]),
                     ),
-                  if (Api.I.isAdmin)
-                    PopupMenuItem<String>(
-                      value: 'speed',
-                      child: Row(children: <Widget>[
-                        const Icon(Icons.speed, size: 20),
-                        const SizedBox(width: 12),
-                        Text(tr('speedLimits')),
-                      ]),
-                    ),
-                  if (Api.I.isAdmin)
-                    PopupMenuItem<String>(
-                      value: 'users',
-                      child: Row(children: <Widget>[
-                        const Icon(Icons.people, size: 20),
-                        const SizedBox(width: 12),
-                        Text(tr('userManagement')),
-                      ]),
-                    ),
-                  if (Api.I.isAdmin)
-                    PopupMenuItem<String>(
-                      value: 'tapo',
-                      child: Row(children: <Widget>[
-                        const Icon(Icons.power_outlined, size: 20),
-                        const SizedBox(width: 12),
-                        Text(tr('tapoDevices')),
-                      ]),
-                    ),
-                  if (Api.I.isSuperadmin)
-                    PopupMenuItem<String>(
-                      value: 'ai',
-                      child: Row(children: <Widget>[
-                        const Icon(Icons.smart_toy_outlined, size: 20),
-                        const SizedBox(width: 12),
-                        Text(tr('aiChats')),
-                      ]),
-                    ),
-                  if (Api.I.isSuperadmin)
-                    PopupMenuItem<String>(
-                      value: 'tailscale',
-                      child: Row(children: <Widget>[
-                        const Icon(Icons.vpn_lock_outlined, size: 20),
-                        const SizedBox(width: 12),
-                        Text(tr('tailscaleRemoteAccess')),
-                      ]),
-                    ),
-                  if (Api.I.isSuperadmin)
-                    PopupMenuItem<String>(
-                      value: 'camera',
-                      child: Row(children: <Widget>[
-                        const Icon(Icons.videocam_outlined, size: 20),
-                        const SizedBox(width: 12),
-                        Text(tr('cameraFeed')),
-                      ]),
-                    ),
-                  if (Api.I.isAdmin)
-                    PopupMenuItem<String>(
-                      value: 'speedtest',
-                      child: Row(children: <Widget>[
-                        const Icon(Icons.network_check, size: 20),
-                        const SizedBox(width: 12),
-                        Text(tr('speedtest')),
-                      ]),
-                    ),
-                  if (Api.I.isAdmin)
-                    PopupMenuItem<String>(
-                      value: 'trash',
-                      child: Row(children: <Widget>[
-                        const Icon(Icons.delete_outline, size: 20),
-                        const SizedBox(width: 12),
-                        Text(tr('trash')),
-                      ]),
-                    ),
-                  if (Api.I.isAdmin)
-                    PopupMenuItem<String>(
-                      value: 'health',
-                      child: Row(children: <Widget>[
-                        const Icon(Icons.health_and_safety_outlined, size: 20),
-                        const SizedBox(width: 12),
-                        Text(tr('healthCheck')),
-                      ]),
-                    ),
-                  if (Api.I.isAdmin)
-                    PopupMenuItem<String>(
-                      value: 'kuma',
-                      child: Row(children: <Widget>[
-                        const Icon(Icons.monitor_heart_outlined, size: 20),
-                        const SizedBox(width: 12),
-                        // Untranslated on purpose: it is a product name, and the
-                        // menu already carries 'Jellyfin URL' the same way.
-                        const Text('Uptime Kuma'),
-                      ]),
-                    ),
-                  PopupMenuItem<String>(
-                    value: 'neweps',
-                    child: Row(children: <Widget>[
-                      const Icon(Icons.tv, size: 20),
-                      const SizedBox(width: 12),
-                      Text(tr('checkNewEps')),
-                    ]),
-                  ),
-                  PopupMenuItem<String>(
-                    value: 'jellyfin',
-                    child: Row(children: <Widget>[
-                      const Icon(Icons.play_circle_outline, size: 20),
-                      const SizedBox(width: 12),
-                      const Text('Jellyfin URL'),
-                    ]),
-                  ),
-                  PopupMenuItem<String>(
-                    value: 'theme',
-                    child: Row(children: <Widget>[
-                      Icon(mode == ThemeMode.dark ? Icons.light_mode : Icons.dark_mode,
-                          size: 20),
-                      const SizedBox(width: 12),
-                      Text(mode == ThemeMode.dark ? tr('lightMode') : tr('darkMode')),
-                    ]),
-                  ),
-                  // Web build only: the Android app gets its pushes through ntfy.
-                  if (kIsWeb)
-                    PopupMenuItem<String>(
-                      value: 'webpush',
-                      child: Row(children: <Widget>[
-                        const Icon(Icons.notifications_active_outlined, size: 20),
-                        const SizedBox(width: 12),
-                        Text(tr('webPush')),
-                      ]),
-                    ),
-                  PopupMenuItem<String>(
-                    value: 'help',
-                    child: Row(children: <Widget>[
-                      const Icon(Icons.help_outline, size: 20),
-                      const SizedBox(width: 12),
-                      Text(tr('helpConnect')),
-                    ]),
-                  ),
-                  PopupMenuItem<String>(
-                    value: 'logout',
-                    child: Row(children: <Widget>[
-                      const Icon(Icons.logout, size: 20),
-                      const SizedBox(width: 12),
-                      Text(tr('logout')),
-                    ]),
-                  ),
-                  const PopupMenuDivider(),
-                  PopupMenuItem<String>(
-                    value: 'kill',
-                    child: Row(children: <Widget>[
-                      const Icon(Icons.power_settings_new, size: 20,
-                          color: Colors.redAccent),
-                      const SizedBox(width: 12),
-                      Text(tr('killApp'),
-                          style: const TextStyle(color: Colors.redAccent)),
-                    ]),
-                  ),
+                  ],
                 ],
               ),
             ),

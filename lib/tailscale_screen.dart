@@ -14,8 +14,24 @@ import 'i18n.dart';
 typedef TailscaleLoader = Future<Map<String, dynamic>> Function();
 typedef TailscaleSetter = Future<Map<String, dynamic>> Function(bool on);
 
-class TailscaleScreen extends StatefulWidget {
+/// The switch with its state and explanation -- on the menu's Home page, and on its own
+/// screen when Home holds nothing else.
+class TailscaleScreen extends StatelessWidget {
   const TailscaleScreen({super.key, this.load, this.set, this.pollEvery = const Duration(seconds: 5)});
+
+  final TailscaleLoader? load;
+  final TailscaleSetter? set;
+  final Duration pollEvery;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('Tailscale')),
+        body: ListView(children: <Widget>[TailscaleSwitchTile(load: load, set: set, pollEvery: pollEvery)]),
+      );
+}
+
+class TailscaleSwitchTile extends StatefulWidget {
+  const TailscaleSwitchTile({super.key, this.load, this.set, this.pollEvery = const Duration(seconds: 5)});
 
   /// Injectable for tests; default to the gateway.
   final TailscaleLoader? load;
@@ -23,10 +39,10 @@ class TailscaleScreen extends StatefulWidget {
   final Duration pollEvery;
 
   @override
-  State<TailscaleScreen> createState() => _TailscaleScreenState();
+  State<TailscaleSwitchTile> createState() => _TailscaleSwitchTileState();
 }
 
-class _TailscaleScreenState extends State<TailscaleScreen> with LangAware<TailscaleScreen> {
+class _TailscaleSwitchTileState extends State<TailscaleSwitchTile> with LangAware<TailscaleSwitchTile> {
   Map<String, dynamic>? _st;
   String? _error;
   bool _sending = false;
@@ -109,15 +125,21 @@ class _TailscaleScreenState extends State<TailscaleScreen> with LangAware<Tailsc
   @override
   Widget build(BuildContext context) {
     final bool? on = _shownOn;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Tailscale')),
-      body: _st == null
-          ? Center(child: _error != null ? Text(_error!) : const CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
+    if (_st == null) {
+      return ListTile(
+        leading: const Icon(Icons.vpn_lock_outlined),
+        title: Text(tr('tailscaleRemoteAccess')),
+        subtitle: _error != null ? Text(_error!) : const LinearProgressIndicator(),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 SwitchListTile(
                   key: const ValueKey<String>('tailscale-switch'),
+                  secondary: const Icon(Icons.vpn_lock_outlined),
                   title: Text(tr('tailscaleRemoteAccess')),
                   subtitle: Text(_stateText()),
                   value: on ?? false,

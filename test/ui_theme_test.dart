@@ -4,7 +4,7 @@ import 'package:nas_app/i18n.dart';
 void main() {
   group('i18n — theme toggle keys', () {
     const List<String> keys = <String>[
-      'darkMode', 'lightMode', 'killApp',
+      'darkMode', 'lightMode', 'menuServer', 'menuHome', 'menuSettings',
     ];
 
     for (final String key in keys) {
@@ -32,9 +32,9 @@ void main() {
       expect(tr('darkMode'), isNot(equals(tr('lightMode'))));
     });
 
-    test('killApp and darkMode are different labels', () {
+    test('the "Kill app" item is gone (owner, 2026-10-27: no longer needed)', () {
       lang.value = 'en';
-      expect(tr('killApp'), isNot(equals(tr('darkMode'))));
+      expect(tr('killApp'), 'killApp');
     });
   });
 
