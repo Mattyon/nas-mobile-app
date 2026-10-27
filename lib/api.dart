@@ -64,8 +64,9 @@ class Api {
     isSuperadmin = prefs.getBool('isSuperadmin') ?? false;
     token = await _secure.read(key: 'token');
     _build();
-    // Seed Jellyfin AA token on startup if logged in but token or URL not yet stored.
-    if (token != null && (!prefs.containsKey('aa_jellyfin_token') || !prefs.containsKey('jellyfinUrl'))) {
+    // Refresh the Android Auto Jellyfin token on every start when logged in, not only when
+    // none is stored: a token Jellyfin no longer accepts would otherwise stay (2026-10-27).
+    if (token != null) {
       final u = await _secure.read(key: 'rememberUser');
       final p = await _secure.read(key: 'rememberPass');
       if (u != null && p != null) _seedJellyfinTokenForAA(u, p);
@@ -247,8 +248,10 @@ class Api {
       final resp = await jDio.post<Map<String, dynamic>>(
         '/Users/AuthenticateByName',
         data: <String, String>{'Username': user, 'Pw': pass},
+        // `Authorization`, not `X-Emby-Authorization`: Jellyfin 12 ignores the old header,
+        // answered 400 and no car token was ever stored (2026-10-27).
         options: Options(headers: <String, String>{
-          'X-Emby-Authorization':
+          'Authorization':
               'MediaBrowser Client="NAS Auto", Device="Android", DeviceId="nas-dart-aa", Version="1.0"',
         }),
       );
@@ -257,7 +260,10 @@ class Api {
           (resp.data?['User'] as Map<String, dynamic>?)?['Id'] as String?;
       if (jToken != null) await prefs.setString('aa_jellyfin_token', jToken);
       if (userId != null) await prefs.setString('aa_jellyfin_userid', userId);
-    } catch (_) {}
+    } catch (e) {
+      // Silent until now: the car then had no token and every video failed (2026-10-27).
+      ClientLog.I.warn('aa_jellyfin', 'Jellyfin sign-in for Android Auto failed: $e');
+    }
   }
 
   /// Refreshes the 365-day expiry (call on each successful use).

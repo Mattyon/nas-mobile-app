@@ -183,7 +183,7 @@ class NasApiClient(private val context: Context) {
                 Request.Builder()
                     .url("$jellyfinUrl/Users/AuthenticateByName")
                     .post(body)
-                    .header("X-Emby-Authorization",
+                    .header("Authorization",
                         "MediaBrowser Client=\"NAS Auto\", Device=\"Android Auto\", DeviceId=\"nas-auto-aa\", Version=\"1.0\"")
                     .build()
             ).execute()
@@ -207,7 +207,7 @@ class NasApiClient(private val context: Context) {
         val resp = runCatching {
             jellyfinHttp.newCall(
                 Request.Builder().url(url).get()
-                    .header("X-Emby-Token", auth.token).build()
+                    .header("Authorization", "MediaBrowser Token=\"${auth.token}\"").build()
             ).execute()
         }.getOrNull() ?: return null
         if (resp.code == 401 && !retried) {
@@ -246,13 +246,27 @@ class NasApiClient(private val context: Context) {
 
     // HLS transcoding — forces H.264/AAC regardless of source codec (avoids HEVC emulator crash).
     // mediaSourceId is required by Jellyfin 10.x (returns 400 without it).
-    fun getJellyfinStreamUrl(itemId: String): String {
-        val auth = getJellyfinAuth()
-        val token = auth?.token ?: ""
+    // `ApiKey`, not `api_key`: Jellyfin 12 refuses the old name with 401 -- every video in the
+    // car failed to play (2026-10-27). Jellyfin carries it into the playlist's segment URLs.
+    fun getJellyfinStreamUrl(itemId: String): String? {
+        val token = getJellyfinAuth()?.token ?: return null
         val url = "$jellyfinUrl/Videos/$itemId/master.m3u8" +
-            "?mediaSourceId=$itemId&VideoCodec=h264&AudioCodec=aac&VideoBitRate=4000000&AudioBitRate=128000&api_key=$token"
-        Log.d(TAG, "getJellyfinStreamUrl: $url")
+            "?mediaSourceId=$itemId&VideoCodec=h264&AudioCodec=aac&VideoBitRate=4000000&AudioBitRate=128000&ApiKey=$token"
+        Log.d(TAG, "getJellyfinStreamUrl: ${url.replace(token, "<token>")}")
         return url
+    }
+
+    // The car's errors in the gateway's log, next to the phone app's (client_log.py): the car
+    // code had no log there, so a failing video left no trace (2026-10-27). Never throws.
+    fun logError(event: String, message: String) {
+        runCatching {
+            val entry = JSONObject().put("level", "error").put("event", event)
+                .put("message", message.take(1500))
+                .put("ts", java.time.Instant.now().toString())
+            post("/client-log", JSONObject()
+                .put("entries", JSONArray().put(entry))
+                .put("device", "android-auto").put("platform", "android-auto"))
+        }
     }
 
     companion object {

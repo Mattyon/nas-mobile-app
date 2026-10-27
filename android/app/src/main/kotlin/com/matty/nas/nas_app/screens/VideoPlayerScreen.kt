@@ -1,6 +1,8 @@
 package com.matty.nas.nas_app.screens
 
 import android.graphics.Rect
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.car.app.AppManager
 import androidx.car.app.CarContext
@@ -39,6 +41,7 @@ class VideoPlayerScreen(
     private var surfaceAvailable = false
 
     private val currentItem get() = items.getOrNull(currentIndex)
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private fun buildTitle(): String {
         val item = currentItem ?: return "Video"
@@ -78,12 +81,35 @@ class VideoPlayerScreen(
         })
     }
 
+    // The stream URL may need a Jellyfin sign-in (network), which Android forbids on the
+    // main thread: resolved on a worker, then played on the main thread.
     private fun startPlayer() {
-        val surface = currentSurface ?: return
+        currentSurface ?: return
         val itemId = currentItem?.optString("Id") ?: return
         Log.d("NasAA", "VideoPlayerScreen.startPlayer itemId=$itemId title=${buildTitle()}")
         player?.release()
-        val streamUrl = api.getJellyfinStreamUrl(itemId)
+        player = null
+        isBuffering = true
+        error = null
+        invalidate()
+        val title = buildTitle()
+        Thread {
+            val streamUrl = api.getJellyfinStreamUrl(itemId)
+            if (streamUrl == null) api.logError("aa_play", "no Jellyfin token for $title")
+            mainHandler.post { playUrl(itemId, streamUrl) }
+        }.start()
+    }
+
+    private fun playUrl(itemId: String, streamUrl: String?) {
+        // the screen moved on (another episode, or closed) while the URL was resolved
+        if (currentItem?.optString("Id") != itemId) return
+        val surface = currentSurface ?: return
+        if (streamUrl == null) {
+            isBuffering = false
+            error = "Cannot sign in to Jellyfin. Open the NAS app on your phone once, then try again."
+            invalidate()
+            return
+        }
         val p = ExoPlayer.Builder(carContext).build()
         p.setVideoSurface(surface)
         p.setMediaItem(MediaItem.fromUri(streamUrl))
@@ -106,6 +132,8 @@ class VideoPlayerScreen(
             override fun onPlayerError(err: PlaybackException) {
                 Log.e("NasAA", "VideoPlayerScreen.onPlayerError: ${err.message}", err.cause)
                 error = err.message ?: "Playback error"
+                val detail = "${err.errorCodeName}: ${err.message} / ${err.cause?.message} (${buildTitle()})"
+                Thread { api.logError("aa_play", detail) }.start()
                 invalidate()
             }
         })
