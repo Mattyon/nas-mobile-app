@@ -784,6 +784,35 @@ class Api {
     return mjpegFrames(r.data!.stream);
   }
 
+  // ── Camera recordings (superadmin; recordings_screen.dart) ──────────────────
+
+  Future<Map<String, dynamic>> recordingsStorage() async {
+    final r = await _dio.get<Map<String, dynamic>>('/cameras/recordings/storage');
+    return r.data ?? <String, dynamic>{};
+  }
+
+  /// The days with recordings and the recorded stretches of [day] (YYYY-MM-DD; the newest
+  /// day when null).
+  Future<Map<String, dynamic>> cameraRecordings(String id, String? day) async {
+    final r = await _dio.get<Map<String, dynamic>>('/cameras/$id/recordings',
+        queryParameters: <String, dynamic>{if (day != null) 'day': day});
+    return r.data ?? <String, dynamic>{};
+  }
+
+  /// Playback from [at] (NAS clock, YYYY-MM-DDTHH:MM:SS) as frames, and where it really
+  /// starts: a moment between recordings starts at the next one.
+  Future<(Stream<Uint8List>, DateTime)> cameraPlayback(
+      String id, String at, bool hd, CancelToken cancel) async {
+    final Response<ResponseBody> r = await _dio.get<ResponseBody>(
+      '/cameras/$id/playback',
+      queryParameters: <String, dynamic>{'at': at, if (hd) 'hd': 'true'},
+      cancelToken: cancel,
+      options: Options(responseType: ResponseType.stream, receiveTimeout: const Duration(seconds: 20)),
+    );
+    final String? start = r.headers.value('x-playback-start');
+    return (mjpegFrames(r.data!.stream), DateTime.parse(start ?? at));
+  }
+
   // ── Tapo smart sockets ──────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> listTapoDevices() async {

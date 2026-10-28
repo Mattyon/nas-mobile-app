@@ -16,6 +16,7 @@ import 'api.dart';
 import 'app_menu.dart';
 import 'notification_filter.dart';
 import 'notification_target.dart';
+import 'recordings_screen.dart';
 import 'tab_history.dart';
 import 'time_zone.dart';
 import 'client_log.dart';
@@ -1364,6 +1365,9 @@ class _HomeShellState extends State<HomeShell> with LangAware {
     } else if (v == 'camera') {
       Navigator.of(context).push(MaterialPageRoute<void>(
           builder: (_) => const CameraListScreen()));
+    } else if (v == 'recordings') {
+      Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const RecordingsScreen()));
     } else if (v == 'help') {
       Navigator.of(context).push(MaterialPageRoute<void>(
           builder: (_) => const HelpScreen()));

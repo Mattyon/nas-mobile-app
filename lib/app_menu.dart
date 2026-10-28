@@ -14,7 +14,7 @@ import 'tailscale_screen.dart';
 //   Server ›     health check, Uptime Kuma, speed test, media sessions      (admin)
 //   Downloads ›  speed limits (admin), check for new episodes, trash (admin)
 //   House        a page: remote access / Tailscale (superadmin, a switch right on the
-//                page), smart sockets (admin), cameras (superadmin)
+//                page), smart sockets (admin), cameras and their recordings (superadmin)
 //   Users (admin)
 //   Settings & help ›  dark/light mode, Jellyfin URL, notifications on this device (web), help
 //   Log out
@@ -51,6 +51,7 @@ bool menuItemVisible(String id, {required bool admin, required bool superadmin, 
     case 'ai':
     case 'tailscale':
     case 'camera':
+    case 'recordings':
       return superadmin;
     case 'health':
     case 'kuma':
@@ -72,7 +73,7 @@ const List<Object> _layout = <Object>[
   'ai',
   MenuGroup('server', Icons.dns_outlined, 'menuServer', <String>['health', 'kuma', 'speedtest', 'sessions']),
   MenuGroup('downloads', Icons.download_outlined, 'downloads', <String>['speed', 'neweps', 'trash']),
-  MenuGroup('house', Icons.home_outlined, 'menuHouse', <String>['tailscale', 'tapo', 'camera']),
+  MenuGroup('house', Icons.home_outlined, 'menuHouse', <String>['tailscale', 'tapo', 'camera', 'recordings']),
   'users',
   MenuGroup('settings', Icons.settings_outlined, 'menuSettings', <String>['theme', 'jellyfin', 'webpush', 'help']),
   'logout',
@@ -149,6 +150,7 @@ String menuLabel(String id, {bool dark = false}) {
     case 'tailscale': return tr('tailscaleRemoteAccess');
     case 'tapo': return tr('tapoDevices');
     case 'camera': return tr('cameraFeed');
+    case 'recordings': return tr('cameraRecordings');
     case 'users': return tr('userManagement');
     case 'theme': return dark ? tr('lightMode') : tr('darkMode');
     case 'jellyfin': return 'Jellyfin URL';
@@ -172,6 +174,7 @@ IconData menuIcon(String id, {bool dark = false}) {
     case 'tailscale': return Icons.vpn_lock_outlined;
     case 'tapo': return Icons.power_outlined;
     case 'camera': return Icons.videocam_outlined;
+    case 'recordings': return Icons.history;
     case 'users': return Icons.people;
     case 'theme': return dark ? Icons.light_mode : Icons.dark_mode;
     case 'jellyfin': return Icons.play_circle_outline;

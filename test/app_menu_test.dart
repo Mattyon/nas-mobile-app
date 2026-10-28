@@ -17,7 +17,7 @@ void main() {
       'ai',
       'server:health,kuma,speedtest,sessions',
       'downloads:speed,neweps,trash',
-      'house:tailscale,tapo,camera',
+      'house:tailscale,tapo,camera,recordings',
       'users',
       'settings:theme,jellyfin,help',
       'logout',
@@ -51,7 +51,7 @@ void main() {
     for (final String l in <String>['en', 'cs']) {
       lang.value = l;
       for (final String id in <String>['ai', 'health', 'kuma', 'speedtest', 'sessions', 'speed', 'neweps', 'trash',
-          'tailscale', 'tapo', 'camera', 'users', 'theme', 'jellyfin', 'webpush', 'help', 'logout']) {
+          'tailscale', 'tapo', 'camera', 'recordings', 'users', 'theme', 'jellyfin', 'webpush', 'help', 'logout']) {
         expect(menuLabel(id), isNot(equals(id)), reason: '$l $id');
         expect(menuIcon(id), isNot(Icons.circle_outlined), reason: id);
       }
