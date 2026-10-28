@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'api.dart';
 import 'i18n.dart';
@@ -14,7 +15,8 @@ import 'i18n.dart';
 // cameras. The first page lists what each camera's recordings take; a camera opens the
 // player: pick a day (only days with recordings) and a time, or tap the day's timeline, and
 // it plays from there on -- MJPEG from the gateway, like the live view, so no sound -- in SD
-// or HD. Times are the NAS's clock. The web build shows the storage only: Dio on the web
+// or HD, also full screen (landscape, the phone's bars hidden; tap for the controls; back
+// leaves it -- owner, 2026-10-28). Times are the NAS's clock. The web build shows the storage only: Dio on the web
 // cannot read an endless response (the live view keeps snapshots there for the same reason).
 
 typedef StorageLoader = Future<Map<String, dynamic>> Function();
@@ -186,6 +188,8 @@ class _RecordingPlayerScreenState extends State<RecordingPlayerScreen> with Lang
   CancelToken? _cancel;
   StreamSubscription<Uint8List>? _sub;
   Timer? _tick;
+  bool _full = false;
+  bool _controls = true;   // full screen: the overlay, shown and hidden by a tap
 
   DayLoader get _loadDay => widget.loadDay ?? Api.I.cameraRecordings;
   Player get _player => widget.play ?? Api.I.cameraPlayback;
@@ -204,7 +208,23 @@ class _RecordingPlayerScreenState extends State<RecordingPlayerScreen> with Lang
   void dispose() {
     _stop();
     _tick?.cancel();
+    if (_full) _systemUi(full: false);
     super.dispose();
+  }
+
+  static void _systemUi({required bool full}) {
+    SystemChrome.setPreferredOrientations(full
+        ? <DeviceOrientation>[DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]
+        : <DeviceOrientation>[]);   // empty: whatever the phone allows again
+    SystemChrome.setEnabledSystemUIMode(full ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge);
+  }
+
+  void _setFull(bool full) {
+    _systemUi(full: full);
+    setState(() {
+      _full = full;
+      _controls = true;
+    });
   }
 
   Future<void> _fetchDay(String? day) async {
@@ -312,9 +332,63 @@ class _RecordingPlayerScreenState extends State<RecordingPlayerScreen> with Lang
     if (!_playing) _play();
   }
 
+  Widget _picture({BoxFit fit = BoxFit.contain}) => _frame != null
+      ? InteractiveViewer(child: Image.memory(_frame!, gaplessPlayback: true, fit: fit))
+      : Icon(_playing ? Icons.hourglass_empty : Icons.play_circle_outline, size: 56, color: Colors.white38);
+
+  Widget _fullScreen(DateTime? pos) => PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (bool didPop, Object? _) {
+          if (!didPop) _setFull(false);
+        },
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          body: GestureDetector(
+            key: const ValueKey<String>('recording-full-area'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _controls = !_controls),
+            child: Stack(children: <Widget>[
+              Positioned.fill(child: Center(child: _picture())),
+              if (_controls) ...<Widget>[
+                Positioned(
+                  top: 16, left: 16,
+                  child: Text(pos == null ? '' : '${widget.name}  ${clockText(pos)}',
+                      style: const TextStyle(color: Colors.white, fontSize: 16,
+                          shadows: <Shadow>[Shadow(blurRadius: 4)])),
+                ),
+                Positioned(
+                  top: 4, right: 4,
+                  child: IconButton(
+                    key: const ValueKey<String>('recording-exit-full'),
+                    color: Colors.white,
+                    icon: const Icon(Icons.fullscreen_exit),
+                    onPressed: () => _setFull(false),
+                  ),
+                ),
+                Positioned(
+                  bottom: 16, left: 0, right: 0,
+                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: <Widget>[
+                    _jump('-1m', const Duration(minutes: -1), color: Colors.white),
+                    const SizedBox(width: 24),
+                    IconButton.filled(
+                      iconSize: 32,
+                      icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
+                      onPressed: _at == null && !_playing ? null : (_playing ? _pause : _play),
+                    ),
+                    const SizedBox(width: 24),
+                    _jump('+1m', const Duration(minutes: 1), color: Colors.white),
+                  ]),
+                ),
+              ],
+            ]),
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final DateTime? pos = _position;
+    if (_full) return _fullScreen(pos);
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.name),
@@ -340,10 +414,19 @@ class _RecordingPlayerScreenState extends State<RecordingPlayerScreen> with Lang
             child: Container(
               color: Colors.black,
               alignment: Alignment.center,
-              child: _frame != null
-                  ? InteractiveViewer(child: Image.memory(_frame!, gaplessPlayback: true, fit: BoxFit.contain))
-                  : Icon(_playing ? Icons.hourglass_empty : Icons.play_circle_outline,
-                      size: 56, color: Colors.white38),
+              child: Stack(children: <Widget>[
+                Positioned.fill(child: Center(child: _picture())),
+                Positioned(
+                  right: 0, bottom: 0,
+                  child: IconButton(
+                    key: const ValueKey<String>('recording-full'),
+                    color: Colors.white,
+                    tooltip: tr('fullScreen'),
+                    icon: const Icon(Icons.fullscreen),
+                    onPressed: () => _setFull(true),
+                  ),
+                ),
+              ]),
             ),
           ),
           Padding(
@@ -415,8 +498,9 @@ class _RecordingPlayerScreenState extends State<RecordingPlayerScreen> with Lang
     );
   }
 
-  Widget _jump(String label, Duration by) => TextButton(
-        key: ValueKey<String>('recording-jump$label'),
+  Widget _jump(String label, Duration by, {Color? color}) => TextButton(
+        key: ValueKey<String>('recording-jump$label${color == null ? '' : '-full'}'),
+        style: color == null ? null : TextButton.styleFrom(foregroundColor: color),
         onPressed: _position == null ? null : () => _seek(_position!.add(by)),
         child: Text(label),
       );

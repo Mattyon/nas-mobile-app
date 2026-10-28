@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nas_app/i18n.dart';
 import 'package:nas_app/recordings_screen.dart';
@@ -91,12 +92,48 @@ void main() {
     unawaited(frames.close());   // paused: the screen already let go of it
   });
 
+  testWidgets('full screen: landscape, bars hidden, back leaves it', (WidgetTester t) async {
+    t.view.physicalSize = const Size(800, 1600);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    final List<MethodCall> calls = <MethodCall>[];
+    t.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (MethodCall c) async {
+      calls.add(c);
+      return null;
+    });
+    addTearDown(() => t.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    await t.pumpWidget(MaterialApp(
+      home: RecordingPlayerScreen(id: 'c1', name: 'Tweety', loadDay: _day,
+          play: (String c, String at, bool hd, CancelToken x) async => (const Stream<Uint8List>.empty(), DateTime.parse(at))),
+    ));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey<String>('recording-full')));
+    await t.pump();
+    expect(find.byType(AppBar), findsNothing);
+    expect(find.byKey(const ValueKey<String>('recording-exit-full')), findsOneWidget);
+    expect(calls.map((MethodCall c) => c.method), containsAll(<String>[
+      'SystemChrome.setPreferredOrientations', 'SystemChrome.setEnabledSystemUIMode']));
+    expect(calls.firstWhere((MethodCall c) => c.method == 'SystemChrome.setPreferredOrientations').arguments,
+        <String>['DeviceOrientation.landscapeLeft', 'DeviceOrientation.landscapeRight']);
+    // a tap hides the controls, another shows them
+    await t.tap(find.byKey(const ValueKey<String>('recording-full-area')));
+    await t.pump();
+    expect(find.byKey(const ValueKey<String>('recording-exit-full')), findsNothing);
+    await t.tap(find.byKey(const ValueKey<String>('recording-full-area')));
+    await t.pump();
+    // the phone's back button leaves full screen, not the player
+    await t.binding.handlePopRoute();
+    await t.pump();
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(find.text('Tweety'), findsOneWidget);
+  });
+
   test('every string in both languages', () {
     for (final String l in <String>['en', 'cs']) {
       lang.value = l;
       for (final String k in <String>['cameraRecordings', 'recordingsTotal', 'recordingsFree', 'recordingsFull',
           'recordingsArchive', 'recordingsSince', 'recordingsPlay', 'recordingsPause', 'recordingsPickTime',
-          'recordingsEnd', 'recordingsWebOnly']) {
+          'recordingsEnd', 'recordingsWebOnly', 'fullScreen']) {
         expect(tr(k), isNot(equals(k)), reason: '$l $k');
       }
     }
