@@ -105,3 +105,7 @@ build", which means this repo finally needs a git remote (it has none).
 - [ ] Disk usage breakdown by show / movie
 - [ ] Scheduled maintenance window (pause downloads during sleep hours)
 - [ ] Multiple quality profiles per user (e.g., guest always gets Fast)
+
+### Requested by owner (2026-10-28)
+- [ ] **Clickable notifications**: tapping a notification opens what it is about (e.g. "new version available" opens the store listing; a download notification opens that download)
+- [ ] **Back button keeps the previous page's state**: e.g. search "scary movie 2", download, open Downloads from the toast, press the phone's back button: return to the search page with "scary movie 2" still in the field and the same results list
