@@ -15,6 +15,8 @@ import 'package:workmanager/workmanager.dart';
 import 'api.dart';
 import 'app_menu.dart';
 import 'notification_filter.dart';
+import 'notification_target.dart';
+import 'tab_history.dart';
 import 'client_log.dart';
 import 'detail.dart';
 import 'i18n.dart';
@@ -27,6 +29,8 @@ import 'web_push.dart';
 final ValueNotifier<int> authTick = ValueNotifier<int>(0);
 final ValueNotifier<int> selectedTab = ValueNotifier<int>(0); // 0=Search 1=Downloads 2=Library
 final ValueNotifier<ThemeMode> themeMode = ValueNotifier<ThemeMode>(ThemeMode.dark);
+/// A tapped notification's target (notification_target.dart), for HomeShell to open.
+final ValueNotifier<String?> pendingNotificationTap = ValueNotifier<String?>(null);
 
 // ----------------------------- local notifications --------------------------
 final FlutterLocalNotificationsPlugin _flnp = FlutterLocalNotificationsPlugin();
@@ -58,7 +62,17 @@ AndroidNotificationChannel channelFor(Map<String, dynamic> n) =>
 Future<void> _initNotifications() async {
   const AndroidInitializationSettings android =
       AndroidInitializationSettings('@mipmap/ic_launcher');
-  await _flnp.initialize(settings: const InitializationSettings(android: android));
+  // A tap reaches the app here, also for notifications the push service or the
+  // background poll showed; one that started the app is in the launch details.
+  await _flnp.initialize(
+    settings: const InitializationSettings(android: android),
+    onDidReceiveNotificationResponse: (NotificationResponse r) =>
+        pendingNotificationTap.value = r.payload,
+  );
+  final NotificationAppLaunchDetails? launch = await _flnp.getNotificationAppLaunchDetails();
+  if (launch?.didNotificationLaunchApp ?? false) {
+    pendingNotificationTap.value = launch!.notificationResponse?.payload;
+  }
   final AndroidFlutterLocalNotificationsPlugin? ap = _flnp
       .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
   // "Download complete" was dropped (2026-10-18): the gateway's "Ready to watch" says it
@@ -86,6 +100,7 @@ Future<void> _showSystemNotification(Map<String, dynamic> n) async {
     id: (n['id'] as int? ?? 0).abs() % 100000,
     title: title,
     body: body,
+    payload: notificationTarget(n),
     notificationDetails: NotificationDetails(
       android: AndroidNotificationDetails(
         ch.id,
@@ -241,6 +256,7 @@ Future<void> _bgPollNotifications() async {
       id: (n['id'] as int? ?? 0).abs() % 100000,
       title: title,
       body: body,
+      payload: notificationTarget(n),
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           ch.id,
@@ -695,6 +711,12 @@ class _NotificationBellState extends State<NotificationBell> with LangAware {
                           subtitle: Text(displayBody,
                               maxLines: 3, overflow: TextOverflow.ellipsis),
                           dense: true,
+                          onTap: notificationTarget(n) == null
+                              ? null
+                              : () {
+                                  Navigator.pop(ctx2);
+                                  pendingNotificationTap.value = notificationTarget(n);
+                                },
                         );
                       },
                     ),
@@ -1027,6 +1049,46 @@ class _HomeShellState extends State<HomeShell> with LangAware {
     LibraryScreen(),
   ];
 
+  late final TabHistory _history = TabHistory(selectedTab);
+
+  @override
+  void initState() {
+    super.initState();
+    selectedTab.addListener(_tabChanged);
+    pendingNotificationTap.addListener(_notificationTapped);
+    // A notification that started the app was tapped before this screen existed.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _notificationTapped());
+  }
+
+  @override
+  void dispose() {
+    selectedTab.removeListener(_tabChanged);
+    pendingNotificationTap.removeListener(_notificationTapped);
+    _history.dispose();
+    super.dispose();
+  }
+
+  // The search stays alive offstage; its keyboard must not.
+  void _tabChanged() => FocusManager.instance.primaryFocus?.unfocus();
+
+  Future<void> _notificationTapped() async {
+    final String? target = pendingNotificationTap.value;
+    if (target == null || !mounted) return;
+    pendingNotificationTap.value = null;
+    // Whatever page is open on top, the target is opened from the main screen.
+    Navigator.of(context).popUntil((Route<dynamic> r) => r.isFirst);
+    if (target.startsWith('tab:')) {
+      selectedTab.value = int.tryParse(target.substring(4)) ?? 0;
+    } else if (target == 'store') {
+      await openExternalUrl(kStoreUrl);
+    } else if (target.startsWith('chat:') && Api.I.isSuperadmin) {
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => AiChatScreen(chatId: target.substring(5), initialTitle: tr('aiChats'))));
+    } else if (target == 'kuma' || (target == 'health' && Api.I.isAdmin)) {
+      await _menuAction(context, target);
+    }
+  }
+
   Future<void> _showSpeedDialog(BuildContext context) async {
     Map<String, dynamic> current;
     try {
@@ -1278,7 +1340,13 @@ class _HomeShellState extends State<HomeShell> with LangAware {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
       valueListenable: selectedTab,
-      builder: (BuildContext context, int tab, Widget? _) => Scaffold(
+      builder: (BuildContext context, int tab, Widget? _) => PopScope(
+        // The phone's back button walks back through the tabs before leaving the app.
+        canPop: !_history.canGoBack,
+        onPopInvokedWithResult: (bool didPop, Object? _) {
+          if (!didPop) _history.back();
+        },
+        child: Scaffold(
         appBar: AppBar(
           title: Text(tr('app')),
           actions: <Widget>[
@@ -1296,7 +1364,16 @@ class _HomeShellState extends State<HomeShell> with LangAware {
             ),
           ],
         ),
-        body: _pages[tab],
+        // The search is kept (offstage) while another tab shows, so its text and results
+        // are still there on the way back. Downloads and Library are rebuilt each time,
+        // as before: Downloads polls every second only while it is on screen.
+        body: Stack(children: <Widget>[
+          Offstage(
+            offstage: tab != 0,
+            child: TickerMode(enabled: tab == 0, child: _pages[0]),
+          ),
+          if (tab != 0) _pages[tab],
+        ]),
         bottomNavigationBar: NavigationBar(
           selectedIndex: tab,
           onDestinationSelected: (int i) => selectedTab.value = i,
@@ -1306,6 +1383,7 @@ class _HomeShellState extends State<HomeShell> with LangAware {
             NavigationDestination(icon: const Icon(Icons.video_library), label: tr('library')),
           ],
         ),
+      ),
       ),
     );
   }
