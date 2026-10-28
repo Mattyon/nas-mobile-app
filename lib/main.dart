@@ -17,6 +17,7 @@ import 'app_menu.dart';
 import 'notification_filter.dart';
 import 'notification_target.dart';
 import 'tab_history.dart';
+import 'time_zone.dart';
 import 'client_log.dart';
 import 'detail.dart';
 import 'i18n.dart';
@@ -167,6 +168,28 @@ Future<Map<String, dynamic>?> _bgHttpGet(String url, String token) async {
   }
 }
 
+/// Raw HTTP PUT of a JSON body in the background isolate; true on a 2xx.
+Future<bool> _bgHttpPut(String url, String token, Map<String, Object?> body) async {
+  HttpClient? client;
+  try {
+    client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+    final HttpClientRequest req = await client.putUrl(Uri.parse(url));
+    req.headers.set('Authorization', 'Bearer $token');
+    req.headers.contentType = ContentType.json;
+    req.write(jsonEncode(body));
+    final HttpClientResponse resp = await req.close();
+    await resp.drain<void>();
+    await ClientLog.persist(resp.statusCode < 300 ? 'info' : 'warning', 'bg_http',
+        'PUT ${Uri.parse(url).path} -> ${resp.statusCode}');
+    return resp.statusCode < 300;
+  } catch (e) {
+    await ClientLog.persist('warning', 'bg_http', 'PUT ${Uri.parse(url).path} failed: $e');
+    return false;
+  } finally {
+    client?.close();
+  }
+}
+
 /// POST to /login; returns the new JWT on success.
 Future<String?> _bgReauth(String baseUrl, FlutterSecureStorage secure) async {
   try {
@@ -220,6 +243,15 @@ Future<void> _bgPollNotifications() async {
     if (token == null) return;
     data = await _bgHttpGet('$baseUrl/notifications', token);
     if (data == null) return;
+  }
+
+  // Quiet hours run on the phone's clock: a new UTC offset (a trip abroad, summer time) is
+  // sent from here too, so it counts even when the app is never opened (time_zone.dart).
+  final int offset = utcOffsetMinutes();
+  if (prefs.getInt('sent_utc_offset') != offset &&
+      await _bgHttpPut('$baseUrl/notifications/prefs', token ?? '',
+          <String, Object?>{'utc_offset_min': offset})) {
+    await prefs.setInt('sent_utc_offset', offset);
   }
 
   final List<dynamic> items =
@@ -1050,10 +1082,13 @@ class _HomeShellState extends State<HomeShell> with LangAware {
   ];
 
   late final TabHistory _history = TabHistory(selectedTab);
+  late final AppLifecycleListener _lifecycle;
 
   @override
   void initState() {
     super.initState();
+    _lifecycle = AppLifecycleListener(onResume: _reportTimeZone);
+    _reportTimeZone();
     selectedTab.addListener(_tabChanged);
     pendingNotificationTap.addListener(_notificationTapped);
     // A notification that started the app was tapped before this screen existed.
@@ -1064,8 +1099,23 @@ class _HomeShellState extends State<HomeShell> with LangAware {
   void dispose() {
     selectedTab.removeListener(_tabChanged);
     pendingNotificationTap.removeListener(_notificationTapped);
+    _lifecycle.dispose();
     _history.dispose();
     super.dispose();
+  }
+
+  // Quiet hours run on the phone's clock: tell the gateway where it is whenever the app
+  // comes to the front (time_zone.dart). The offset first: a zone name the gateway does
+  // not know must not lose it.
+  Future<void> _reportTimeZone() async {
+    final int offset = utcOffsetMinutes();
+    try {
+      await Api.I.reportTimeZone(utcOffsetMin: offset);
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('sent_utc_offset', offset);
+      final String? tz = await deviceTimeZone();
+      if (tz != null && tz.isNotEmpty) await Api.I.reportTimeZone(tz: tz);
+    } catch (_) {}
   }
 
   // The search stays alive offstage; its keyboard must not.

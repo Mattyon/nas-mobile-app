@@ -619,6 +619,21 @@ class Api {
     return r.data ?? <String, dynamic>{};
   }
 
+  /// Quiet hours: any of {enabled, start, end} ("HH:MM").
+  Future<Map<String, dynamic>> setQuietHours(Map<String, dynamic> quiet) async {
+    final r = await _dio.put<Map<String, dynamic>>('/notifications/prefs',
+        data: <String, dynamic>{'quiet': quiet});
+    return r.data ?? <String, dynamic>{};
+  }
+
+  /// Where the phone is: its zone name and/or its clock's UTC offset in minutes.
+  Future<void> reportTimeZone({String? tz, int? utcOffsetMin}) async {
+    await _dio.put<dynamic>('/notifications/prefs', data: <String, dynamic>{
+      if (tz != null) 'tz': tz,
+      if (utcOffsetMin != null) 'utc_offset_min': utcOffsetMin,
+    });
+  }
+
   Future<void> cancelDownload(String hash) async {
     await _dio.delete<dynamic>('/downloads/$hash');
   }
