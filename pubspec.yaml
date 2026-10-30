@@ -18,7 +18,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # of the product and file versions while build-number is used as the build suffix.
 # Mirror of VERSION (the source): scripts/play_publish.py bump keeps the two in step,
 # and every build passes VERSION to Flutter explicitly.
-version: 1.2.1+27
+version: 1.2.2+28
 
 environment:
   sdk: ^3.12.1
