@@ -2094,31 +2094,51 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   }
 
   Future<void> _confirmCancel(Map<String, dynamic> t) async {
-    final bool? ok = await showDialog<bool>(
+    // 'stop' or 'block'. Block is for a torrent that is broken (no metadata, no seeds,
+    // wrong file): it is never picked again and a healthy release is grabbed instead.
+    final String? choice = await showDialog<String>(
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
         title: const Text('Stop download?'),
-        content: Text('Remove "${t['name']}" and delete all partial files from disk?'),
+        content: Text('Remove "${t['name']}" and delete all partial files from disk?\n\n'
+            'Block also makes sure this torrent is never downloaded again, and grabs a '
+            'different one instead.'),
         actions: <Widget>[
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
+            onPressed: () => Navigator.pop(ctx),
             child: Text(tr('cancel')),
+          ),
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, 'block'),
+            child: const Text('Block'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: () => Navigator.pop(ctx, 'stop'),
             child: const Text('Stop'),
           ),
         ],
       ),
     );
-    if (ok != true) return;
+    if (choice == null) return;
     final String? hash = t['hash']?.toString();
     if (hash == null) return;
+    final bool block = choice == 'block';
     setState(() => _items.removeWhere(
         (dynamic e) => (e as Map<String, dynamic>)['hash'] == hash));
     try {
-      await Api.I.cancelDownload(hash);
+      final Map<String, dynamic> r = await Api.I.cancelDownload(hash, block: block);
+      if (block && mounted) {
+        final String? instead = r['replacement']?.toString();
+        final int episodes = (r['replaced_episodes'] as num?)?.toInt() ?? 0;
+        final String msg = instead != null
+            ? 'Blocked. Downloading "$instead" instead.'
+            : episodes > 0
+                ? 'Blocked. Looking for another release.'
+                : 'Blocked. No other healthy release found yet.';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      }
     } catch (_) {}
     _refresh();
   }

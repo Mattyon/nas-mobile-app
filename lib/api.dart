@@ -634,8 +634,13 @@ class Api {
     });
   }
 
-  Future<void> cancelDownload(String hash) async {
-    await _dio.delete<dynamic>('/downloads/$hash');
+  /// Stops a download. [block] also keeps the torrent from ever being picked again and
+  /// grabs a healthy release in its place; the reply says what was grabbed.
+  Future<Map<String, dynamic>> cancelDownload(String hash, {bool block = false}) async {
+    final Response<dynamic> r = await _dio.delete<dynamic>('/downloads/$hash',
+        queryParameters: <String, dynamic>{if (block) 'block': true});
+    final dynamic data = r.data;
+    return data is Map<String, dynamic> ? data : <String, dynamic>{};
   }
 
   Future<void> triggerNewEpisodeCheck() async {
