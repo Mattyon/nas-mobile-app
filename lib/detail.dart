@@ -218,7 +218,6 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
 
   /// Modal with a spinner that cycles through grab stage messages while we wait.
   /// Mirrors the search-list flow so Download shows the same steps everywhere.
-  /// The returned close callback is idempotent (safe to call more than once).
   VoidCallback _showStages() {
     final List<String> stages = <String>[
       tr('stageSearch'), tr('stageDatabases'), tr('stagePick'), tr('stageStart'),
@@ -227,9 +226,10 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
     final Timer timer = Timer.periodic(const Duration(milliseconds: 1600), (_) {
       if (step.value < stages.length - 1) step.value++;
     });
+    // A tap on the shadow hides it; the download carries on and its snackbar still comes.
+    bool open = true;
     showDialog<void>(
       context: context,
-      barrierDismissible: false,
       builder: (_) => Dialog(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -249,14 +249,18 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
           ),
         ),
       ),
-    );
-    bool closed = false;
-    return () {
-      if (closed) return;
-      closed = true;
+    ).then((_) {
+      open = false;
       timer.cancel();
-      step.dispose();
-      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    });
+    // Idempotent, and pops only this dialog: once it is gone (hidden by a tap, or closed
+    // already) a pop would take down whatever is underneath instead.
+    return () {
+      timer.cancel();
+      if (open && mounted) {
+        open = false;
+        Navigator.of(context, rootNavigator: true).pop();
+      }
     };
   }
 

@@ -1810,9 +1810,10 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
     final Timer timer = Timer.periodic(const Duration(milliseconds: 1600), (_) {
       if (step.value < stages.length - 1) step.value++;
     });
+    // A tap on the shadow hides it; the download carries on and its snackbar still comes.
+    bool open = true;
     showDialog<void>(
       context: context,
-      barrierDismissible: false,
       builder: (_) => Dialog(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -1832,11 +1833,18 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
           ),
         ),
       ),
-    );
+    ).then((_) {
+      open = false;
+      timer.cancel();
+    });
+    // Idempotent, and pops only this dialog: once it is gone (hidden by a tap, or closed
+    // already) a pop would take down whatever is underneath instead.
     return () {
       timer.cancel();
-      step.dispose();
-      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      if (open && mounted) {
+        open = false;
+        Navigator.of(context, rootNavigator: true).pop();
+      }
     };
   }
 
