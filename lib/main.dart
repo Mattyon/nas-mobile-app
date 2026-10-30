@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 import 'api.dart';
 import 'app_menu.dart';
+import 'clear_button.dart';
 import 'notification_filter.dart';
 import 'notification_target.dart';
 import 'recordings_screen.dart';
@@ -30,6 +31,9 @@ import 'web_push.dart';
 
 final ValueNotifier<int> authTick = ValueNotifier<int>(0);
 final ValueNotifier<int> selectedTab = ValueNotifier<int>(0); // 0=Search 1=Downloads 2=Library
+// Bumped when the Search tab is tapped in the bottom bar: the search starts empty then.
+// Coming back with the back button keeps the text and results.
+final ValueNotifier<int> searchReset = ValueNotifier<int>(0);
 final ValueNotifier<ThemeMode> themeMode = ValueNotifier<ThemeMode>(ThemeMode.dark);
 /// A tapped notification's target (notification_target.dart), for HomeShell to open.
 final ValueNotifier<String?> pendingNotificationTap = ValueNotifier<String?>(null);
@@ -1031,13 +1035,15 @@ class _LoginScreenState extends State<LoginScreen> with LangAware {
               const SizedBox(height: 12),
               TextField(
                 controller: _user,
-                decoration: InputDecoration(labelText: tr('username')),
+                decoration: InputDecoration(
+                    labelText: tr('username'), suffixIcon: ClearButton(_user)),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _pass,
                 obscureText: true,
-                decoration: InputDecoration(labelText: tr('password')),
+                decoration: InputDecoration(
+                    labelText: tr('password'), suffixIcon: ClearButton(_pass)),
                 onSubmitted: (_) => _submit(),
               ),
               const SizedBox(height: 8),
@@ -1161,12 +1167,14 @@ class _HomeShellState extends State<HomeShell> with LangAware {
           children: <Widget>[
             TextField(
                 controller: dlCtrl,
-                decoration: InputDecoration(labelText: tr('dlLimit')),
+                decoration: InputDecoration(
+                    labelText: tr('dlLimit'), suffixIcon: ClearButton(dlCtrl)),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true)),
             const SizedBox(height: 8),
             TextField(
                 controller: upCtrl,
-                decoration: InputDecoration(labelText: tr('upLimit')),
+                decoration: InputDecoration(
+                    labelText: tr('upLimit'), suffixIcon: ClearButton(upCtrl)),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true)),
             const SizedBox(height: 16),
             Row(
@@ -1236,10 +1244,11 @@ class _HomeShellState extends State<HomeShell> with LangAware {
               const SizedBox(height: 12),
               TextField(
                 controller: urlCtrl,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'URL',
                   hintText: 'https://jellyfin.mattyzem.com',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
+                  suffixIcon: ClearButton(urlCtrl),
                 ),
                 keyboardType: TextInputType.url,
                 autocorrect: false,
@@ -1430,7 +1439,10 @@ class _HomeShellState extends State<HomeShell> with LangAware {
         ]),
         bottomNavigationBar: NavigationBar(
           selectedIndex: tab,
-          onDestinationSelected: (int i) => selectedTab.value = i,
+          onDestinationSelected: (int i) {
+            if (i == 0) searchReset.value++;
+            selectedTab.value = i;
+          },
           destinations: <NavigationDestination>[
             NavigationDestination(icon: const Icon(Icons.search), label: tr('search')),
             NavigationDestination(icon: const Icon(Icons.download), label: tr('downloads')),
@@ -1485,12 +1497,27 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
   void initState() {
     super.initState(); // LangAware adds its rebuild listener
     lang.addListener(_reSearchOnLang);
+    searchReset.addListener(_reset);
   }
 
   @override
   void dispose() {
     lang.removeListener(_reSearchOnLang);
+    searchReset.removeListener(_reset);
     super.dispose();
+  }
+
+  // Bumped on each search, and on a reset, so an answer that arrives after either is dropped.
+  int _generation = 0;
+
+  void _reset() {
+    _generation++;
+    _q.clear();
+    setState(() {
+      _results = <dynamic>[];
+      _busy = false;
+      _searched = false;
+    });
   }
 
   // Re-run the search on language change so titles re-localize (cs <-> en).
@@ -1515,6 +1542,7 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
 
   Future<void> _run() async {
     if (_q.text.trim().isEmpty) return;
+    final int generation = ++_generation;
     setState(() {
       _busy = true;
       _searched = true;
@@ -1522,11 +1550,11 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
     });
     try {
       final List<dynamic> r = await Api.I.search(_q.text.trim(), 'any', lang: lang.value);
-      setState(() => _results = r);
+      if (mounted && generation == _generation) setState(() => _results = r);
     } catch (_) {
-      setState(() => _results = <dynamic>[]);
+      if (mounted && generation == _generation) setState(() => _results = <dynamic>[]);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && generation == _generation) setState(() => _busy = false);
     }
   }
 
@@ -1902,6 +1930,7 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
             decoration: InputDecoration(
               hintText: tr('searchHint'),
               prefixIcon: const Icon(Icons.search),
+              suffixIcon: ClearButton(_q),
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             ),
           ),
@@ -2271,6 +2300,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
             controller: _q,
             decoration: InputDecoration(
                 hintText: tr('search'), prefixIcon: const Icon(Icons.search),
+                suffixIcon: ClearButton(_q),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14)),
           ),
         ),
@@ -2601,6 +2631,7 @@ class _LibraryScreenState extends State<LibraryScreen> with LangAware {
                   onSubmitted: (_) => _refresh(),
                   decoration: InputDecoration(
                       hintText: tr('search'), prefixIcon: const Icon(Icons.search),
+                      suffixIcon: ClearButton(_q, onCleared: _refresh),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14)),
                 ),
               ),
@@ -3152,18 +3183,21 @@ class _UsersScreenState extends State<UsersScreen> with LangAware {
                 if (!isEdit)
                   TextField(
                       controller: nameCtrl,
-                      decoration: InputDecoration(labelText: tr('username')),
+                      decoration: InputDecoration(
+                          labelText: tr('username'), suffixIcon: ClearButton(nameCtrl)),
                       onChanged: (_) { if (errorMsg != null) ss(() => errorMsg = null); }),
                 const SizedBox(height: 8),
                 TextField(
                     controller: dispCtrl,
-                    decoration: InputDecoration(labelText: tr('displayName')),
+                    decoration: InputDecoration(
+                        labelText: tr('displayName'), suffixIcon: ClearButton(dispCtrl)),
                     onChanged: (_) { if (errorMsg != null) ss(() => errorMsg = null); }),
                 const SizedBox(height: 8),
                 TextField(
                     controller: passCtrl,
                     decoration: InputDecoration(
-                        labelText: isEdit ? tr('newPassword') : tr('password')),
+                        labelText: isEdit ? tr('newPassword') : tr('password'),
+                        suffixIcon: ClearButton(passCtrl)),
                     obscureText: true,
                     onChanged: (_) { if (errorMsg != null) ss(() => errorMsg = null); }),
                 const SizedBox(height: 8),
@@ -3399,7 +3433,8 @@ class _AiChatsListScreenState extends State<AiChatsListScreen> with LangAware {
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
         title: Text(tr('renameChat')),
-        content: TextField(controller: ctrl, autofocus: true),
+        content: TextField(controller: ctrl, autofocus: true,
+            decoration: InputDecoration(suffixIcon: ClearButton(ctrl))),
         actions: <Widget>[
           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(tr('cancel'))),
           FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text(tr('save'))),
@@ -3731,6 +3766,7 @@ class _AiChatScreenState extends State<AiChatScreen> with LangAware {
                           decoration: InputDecoration(
                             hintText: tr('aiHint'),
                             isDense: true,
+                            suffixIcon: ClearButton(_input),
                             border: const OutlineInputBorder(),
                           ),
                         ),
@@ -4364,7 +4400,8 @@ class _CameraListScreenState extends State<CameraListScreen> with LangAware {
       builder: (BuildContext ctx) => AlertDialog(
         title: Text(tr('cameraName')),
         content: TextField(controller: ctrl, autofocus: true,
-            decoration: InputDecoration(hintText: tr('cameraName'))),
+            decoration: InputDecoration(
+                hintText: tr('cameraName'), suffixIcon: ClearButton(ctrl))),
         actions: <Widget>[
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('cancel'))),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('ok'))),
@@ -4388,10 +4425,12 @@ class _CameraListScreenState extends State<CameraListScreen> with LangAware {
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             TextField(controller: nameCtrl, autofocus: true,
-                decoration: InputDecoration(labelText: tr('cameraName'))),
+                decoration: InputDecoration(
+                    labelText: tr('cameraName'), suffixIcon: ClearButton(nameCtrl))),
             const SizedBox(height: 8),
             TextField(controller: urlCtrl,
-                decoration: InputDecoration(labelText: tr('cameraUrl')),
+                decoration: InputDecoration(
+                    labelText: tr('cameraUrl'), suffixIcon: ClearButton(urlCtrl)),
                 keyboardType: TextInputType.url),
           ],
         ),
@@ -4698,12 +4737,14 @@ class _TapoDevicesScreenState extends State<TapoDevicesScreen> with LangAware {
               TextField(
                 controller: nameCtrl,
                 autofocus: true,
-                decoration: InputDecoration(labelText: tr('tapoSocketName')),
+                decoration: InputDecoration(
+                    labelText: tr('tapoSocketName'), suffixIcon: ClearButton(nameCtrl)),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: ipCtrl,
-                decoration: InputDecoration(labelText: tr('tapoIpAddress')),
+                decoration: InputDecoration(
+                    labelText: tr('tapoIpAddress'), suffixIcon: ClearButton(ipCtrl)),
                 keyboardType: TextInputType.phone,
               ),
               if (addError != null) ...<Widget>[
@@ -4751,7 +4792,8 @@ class _TapoDevicesScreenState extends State<TapoDevicesScreen> with LangAware {
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
         title: Text(tr('tapoRename')),
-        content: TextField(controller: ctrl, autofocus: true),
+        content: TextField(controller: ctrl, autofocus: true,
+            decoration: InputDecoration(suffixIcon: ClearButton(ctrl))),
         actions: <Widget>[
           TextButton(
               onPressed: () => Navigator.pop(ctx, false), child: Text(tr('cancel'))),
@@ -5032,7 +5074,8 @@ class _TapoDeviceDetailScreenState extends State<TapoDeviceDetailScreen>
                 autofocus: true,
                 keyboardType: TextInputType.number,
                 decoration:
-                    InputDecoration(labelText: tr('tapoTimerMinutes'), suffixText: 'min'),
+                    InputDecoration(labelText: tr('tapoTimerMinutes'), suffixText: 'min',
+                        suffixIcon: ClearButton(minsCtrl)),
               ),
               const SizedBox(height: 16),
               Row(children: <Widget>[
