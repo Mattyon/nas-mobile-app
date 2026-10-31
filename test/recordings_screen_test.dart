@@ -1,7 +1,3 @@
-import 'dart:async';
-import 'dart:typed_data';
-
-import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,7 +5,7 @@ import 'package:nas_app/i18n.dart';
 import 'package:nas_app/recordings_screen.dart';
 
 // Camera recordings for the superadmin (owner, 2026-10-28): storage per camera and in total,
-// and playback from a picked day and time.
+// and playback from a picked day and time, with the camera's sound (2026-10-31).
 
 final Map<String, dynamic> _storage = <String, dynamic>{
   'cameras': <Map<String, dynamic>>[
@@ -29,6 +25,49 @@ Future<Map<String, dynamic>> _day(String cam, String? day) async => <String, dyn
       ],
     };
 
+// The video from 11:10: a minute, then (after a gap) from 11:20 on.
+Future<Map<String, dynamic>> _plan(String cam, String at) async => <String, dynamic>{
+      'start': at,
+      'pieces': <Map<String, dynamic>>[
+        <String, dynamic>{'start': at, 'seconds': 60},
+        <String, dynamic>{'start': '2026-10-28T11:20:00', 'seconds': 600},
+      ],
+    };
+
+class _FakeVideo extends ChangeNotifier implements RecordingVideo {
+  @override
+  Duration position = Duration.zero;
+  @override
+  bool ended = false;
+  @override
+  String? error;
+  bool paused = false;
+  bool disposed = false;
+
+  @override
+  Future<void> open() async {}
+  @override
+  Widget view() => const SizedBox(key: ValueKey<String>('fake-video'));
+  @override
+  void pause() => paused = true;
+
+  @override
+  void dispose() {
+    disposed = true;
+    super.dispose();
+  }
+
+  void play(Duration to) {
+    position = to;
+    notifyListeners();
+  }
+
+  void end() {
+    ended = true;
+    notifyListeners();
+  }
+}
+
 void main() {
   setUp(() => lang.value = 'en');
 
@@ -41,6 +80,14 @@ void main() {
 
   test('moments go to the gateway on the NAS clock', () {
     expect(wallClock(DateTime(2026, 10, 28, 9, 5, 3)), '2026-10-28T09:05:03');
+  });
+
+  test('the clock jumps over the gaps the video leaves out', () {
+    final List<Piece> pieces = <Piece>[(DateTime(2026, 10, 28, 11, 10), 60), (DateTime(2026, 10, 28, 11, 20), 600)];
+    expect(momentIn(pieces, const Duration(seconds: 30)), DateTime(2026, 10, 28, 11, 10, 30));
+    expect(momentIn(pieces, const Duration(seconds: 90)), DateTime(2026, 10, 28, 11, 20, 30));
+    // past the last stretch's expected end: still counts on from it
+    expect(momentIn(pieces, const Duration(seconds: 700)), DateTime(2026, 10, 28, 11, 30, 40));
   });
 
   test('a tap on the timeline is that moment of the day', () {
@@ -62,16 +109,21 @@ void main() {
     t.view.physicalSize = const Size(800, 1600);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
-    final List<(String, bool)> asked = <(String, bool)>[];
-    final StreamController<Uint8List> frames = StreamController<Uint8List>();
+    final List<String> planned = <String>[];
+    final List<(String, bool)> opened = <(String, bool)>[];
+    final List<_FakeVideo> videos = <_FakeVideo>[];
     await t.pumpWidget(MaterialApp(
       home: RecordingPlayerScreen(
         id: 'c1',
         name: 'Tweety',
         loadDay: _day,
-        play: (String cam, String at, bool hd, CancelToken cancel) async {
-          asked.add((at, hd));
-          return (frames.stream, DateTime.parse(at));
+        loadPlan: (String cam, String at) {
+          planned.add(at);
+          return _plan(cam, at);
+        },
+        openVideo: (String cam, String at, bool hd) {
+          opened.add((at, hd));
+          return (videos..add(_FakeVideo())).last;
         },
       ),
     ));
@@ -84,12 +136,50 @@ void main() {
     await t.tap(find.byKey(const ValueKey<String>('recording-hd')));
     await t.tap(find.byKey(const ValueKey<String>('recording-play')));
     await t.pump();
-    expect(asked, <(String, bool)>[('2026-10-28T11:10:00', true)]);
+    expect(planned, <String>['2026-10-28T11:10:00']);
+    expect(opened, <(String, bool)>[('2026-10-28T11:10:00', true)]);
     expect(find.byIcon(Icons.pause), findsOneWidget);
-    await t.tap(find.byKey(const ValueKey<String>('recording-play')));   // pause
+    expect(find.byKey(const ValueKey<String>('fake-video')), findsOneWidget);
+    // a minute and a half in: past the gap, so 11:20:30, not 11:11:30
+    videos.single.play(const Duration(seconds: 90));
+    await t.pump();
+    expect(find.text('28.10.2026 11:20:30'), findsOneWidget);
+    // pause: the picture stays, and play goes on from there
+    await t.tap(find.byKey(const ValueKey<String>('recording-play')));
     await t.pump();
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
-    unawaited(frames.close());   // paused: the screen already let go of it
+    expect(videos.single.paused && !videos.single.disposed, isTrue);
+    expect(find.byKey(const ValueKey<String>('fake-video')), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey<String>('recording-play')));
+    await t.pump();
+    expect(planned.last, '2026-10-28T11:20:30');
+    expect(videos.first.disposed, isTrue);   // the new one is open: the still goes
+    // the end of the recordings
+    videos.last.end();
+    await t.pump();
+    expect(find.text('End of the recordings'), findsOneWidget);
+    expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+  });
+
+  testWidgets('a video that fails says so', (WidgetTester t) async {
+    t.view.physicalSize = const Size(800, 1600);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    final _FakeVideo v = _FakeVideo();
+    await t.pumpWidget(MaterialApp(
+      home: RecordingPlayerScreen(id: 'c1', name: 'Tweety', loadDay: _day, loadPlan: _plan,
+          openVideo: (String c, String at, bool hd) => v),
+    ));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey<String>('recording-play')));
+    await t.pump();
+    v
+      ..error = 'Source error'
+      ..notifyListeners();
+    await t.pump();
+    expect(find.text('Source error'), findsOneWidget);
+    expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+    expect(v.disposed, isTrue);
   });
 
   testWidgets('full screen: landscape, bars hidden, back leaves it', (WidgetTester t) async {
@@ -103,8 +193,8 @@ void main() {
     });
     addTearDown(() => t.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
     await t.pumpWidget(MaterialApp(
-      home: RecordingPlayerScreen(id: 'c1', name: 'Tweety', loadDay: _day,
-          play: (String c, String at, bool hd, CancelToken x) async => (const Stream<Uint8List>.empty(), DateTime.parse(at))),
+      home: RecordingPlayerScreen(id: 'c1', name: 'Tweety', loadDay: _day, loadPlan: _plan,
+          openVideo: (String c, String at, bool hd) => _FakeVideo()),
     ));
     await t.pumpAndSettle();
     await t.tap(find.byKey(const ValueKey<String>('recording-full')));

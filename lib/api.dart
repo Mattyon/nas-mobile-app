@@ -804,19 +804,21 @@ class Api {
     return r.data ?? <String, dynamic>{};
   }
 
-  /// Playback from [at] (NAS clock, YYYY-MM-DDTHH:MM:SS) as frames, and where it really
-  /// starts: a moment between recordings starts at the next one.
-  Future<(Stream<Uint8List>, DateTime)> cameraPlayback(
-      String id, String at, bool hd, CancelToken cancel) async {
-    final Response<ResponseBody> r = await _dio.get<ResponseBody>(
-      '/cameras/$id/playback',
-      queryParameters: <String, dynamic>{'at': at, if (hd) 'hd': 'true'},
-      cancelToken: cancel,
-      options: Options(responseType: ResponseType.stream, receiveTimeout: const Duration(seconds: 20)),
-    );
-    final String? start = r.headers.value('x-playback-start');
-    return (mjpegFrames(r.data!.stream), DateTime.parse(start ?? at));
+  /// Where playback from [at] (NAS clock, YYYY-MM-DDTHH:MM:SS) really starts -- a moment
+  /// between recordings starts at the next one -- and the recorded stretches that follow.
+  Future<Map<String, dynamic>> cameraPlaybackPlan(String id, String at) async {
+    final r = await _dio.get<Map<String, dynamic>>('/cameras/$id/playback/plan',
+        queryParameters: <String, dynamic>{'at': at});
+    return r.data ?? <String, dynamic>{};
   }
+
+  /// The video (with the camera's sound) from [at], for the phone's player: its address and
+  /// the login to send with it. Ask for the plan first: it renews an expired login.
+  (Uri, Map<String, String>) cameraVideo(String id, String at, bool hd) => (
+        Uri.parse('$baseUrl/cameras/$id/playback/video')
+            .replace(queryParameters: <String, String>{'at': at, if (hd) 'hd': 'true'}),
+        <String, String>{if (token != null) 'Authorization': 'Bearer $token'},
+      );
 
   // ── Tapo smart sockets ──────────────────────────────────────────────────────
 

@@ -47,6 +47,7 @@ dependencies:
   flutter_foreground_task: ^9.2.2
   url_launcher: ^6.3.2
   cached_network_image: ^3.4.1
+  video_player: ^2.14.1
 
 dependency_overrides:
   # see the workmanager pin above

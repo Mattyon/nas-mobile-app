@@ -1,10 +1,7 @@
-import 'dart:async';
-import 'dart:typed_data';
-
-import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:video_player/video_player.dart';
 
 import 'api.dart';
 import 'i18n.dart';
@@ -14,15 +11,87 @@ import 'i18n.dart';
 // quality), with the possibility of picking the date and time"). Superadmin only, like the
 // cameras. The first page lists what each camera's recordings take; a camera opens the
 // player: pick a day (only days with recordings) and a time, or tap the day's timeline, and
-// it plays from there on -- MJPEG from the gateway, like the live view, so no sound -- in SD
-// or HD, also full screen (landscape, the phone's bars hidden; tap for the controls; back
-// leaves it -- owner, 2026-10-28). Times are the NAS's clock. The web build shows the storage only: Dio on the web
-// cannot read an endless response (the live view keeps snapshots there for the same reason).
+// it plays from there on -- video with the camera's sound, in the phone's own player (owner,
+// 2026-10-31: "i want also audio in my app") -- in SD or HD, also full screen (landscape, the
+// phone's bars hidden; tap for the controls; back leaves it -- owner, 2026-10-28). Times are
+// the NAS's clock. The web build shows the storage only: the browser's player cannot send
+// the login with the video.
 
 typedef StorageLoader = Future<Map<String, dynamic>> Function();
 typedef DayLoader = Future<Map<String, dynamic>> Function(String camId, String? day);
-typedef Player = Future<(Stream<Uint8List>, DateTime)> Function(
-    String camId, String at, bool hd, CancelToken cancel);
+typedef PlanLoader = Future<Map<String, dynamic>> Function(String camId, String at);
+typedef VideoOpener = RecordingVideo Function(String camId, String at, bool hd);
+
+/// A recording playing from a moment: how far into it the player is, whether it ended or
+/// failed, and its picture. The app's is the phone's player; tests use a fake.
+abstract class RecordingVideo implements Listenable {
+  Future<void> open();
+  Duration get position;
+  bool get ended;
+  String? get error;
+  Widget view();
+  void pause();
+  void dispose();
+}
+
+class _PhoneVideo extends ChangeNotifier implements RecordingVideo {
+  _PhoneVideo(String camId, String at, bool hd) {
+    final (Uri url, Map<String, String> login) = Api.I.cameraVideo(camId, at, hd);
+    _c = VideoPlayerController.networkUrl(url, httpHeaders: login)..addListener(notifyListeners);
+  }
+
+  late final VideoPlayerController _c;
+  bool _paused = false;
+
+  @override
+  Future<void> open() async {
+    await _c.initialize();
+    if (!_paused) await _c.play();   // paused while it was still loading: stays so
+  }
+
+  @override
+  Duration get position => _c.value.position;
+  @override
+  bool get ended => _c.value.isCompleted;
+  @override
+  String? get error => _c.value.hasError ? (_c.value.errorDescription ?? 'playback failed') : null;
+  @override
+  Widget view() => AspectRatio(aspectRatio: _c.value.aspectRatio, child: VideoPlayer(_c));
+  @override
+  void pause() {
+    _paused = true;
+    _c.pause();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+}
+
+/// One file's part of the video: where it starts on the NAS clock, and how long it is.
+typedef Piece = (DateTime, double);
+
+List<Piece> parsePieces(Object? pieces) => <Piece>[
+      for (final Object? p in (pieces as List<dynamic>?) ?? <dynamic>[])
+        if (p is Map<String, dynamic>)
+          (DateTime.parse(p['start'] as String), (p['seconds'] as num).toDouble()),
+    ];
+
+/// The moment [played] into a video made of [pieces]: the gateway skips the gaps between
+/// recordings, so the time jumps over them.
+DateTime momentIn(List<Piece> pieces, Duration played) {
+  double left = played.inMilliseconds / 1000;
+  for (int i = 0; i < pieces.length; i++) {
+    final (DateTime start, double seconds) = pieces[i];
+    if (left < seconds || i == pieces.length - 1) {
+      return start.add(Duration(milliseconds: (left * 1000).round()));
+    }
+    left -= seconds;
+  }
+  throw ArgumentError('no pieces');
+}
 
 /// Human-readable size: 354 MB, 35.6 GB, 1.2 TB.
 String formatBytes(num bytes) {
@@ -161,13 +230,15 @@ class _RecordingsScreenState extends State<RecordingsScreen> with LangAware {
 // ── player ───────────────────────────────────────────────────────────────────
 
 class RecordingPlayerScreen extends StatefulWidget {
-  const RecordingPlayerScreen({super.key, required this.id, required this.name, this.loadDay, this.play});
+  const RecordingPlayerScreen(
+      {super.key, required this.id, required this.name, this.loadDay, this.loadPlan, this.openVideo});
   final String id;
   final String name;
 
-  /// Injectable for tests; default to the gateway.
+  /// Injectable for tests; default to the gateway and the phone's player.
   final DayLoader? loadDay;
-  final Player? play;
+  final PlanLoader? loadPlan;
+  final VideoOpener? openVideo;
 
   @override
   State<RecordingPlayerScreen> createState() => _RecordingPlayerScreenState();
@@ -182,21 +253,21 @@ class _RecordingPlayerScreenState extends State<RecordingPlayerScreen> with Lang
   bool _playing = false;
   bool _ended = false;
   String? _error;
-  Uint8List? _frame;
-  DateTime? _playStart;
-  final Stopwatch _clock = Stopwatch();
-  CancelToken? _cancel;
-  StreamSubscription<Uint8List>? _sub;
-  Timer? _tick;
+  RecordingVideo? _video;        // playing
+  RecordingVideo? _still;        // paused: its picture stays until the next one plays
+  bool _opening = false;         // the video is loading: the still (if any) shows meanwhile
+  List<Piece> _pieces = <Piece>[];
+  int _run = 0;                  // a newer play or pause makes an older one's results stale
   bool _full = false;
   bool _controls = true;   // full screen: the overlay, shown and hidden by a tap
 
   DayLoader get _loadDay => widget.loadDay ?? Api.I.cameraRecordings;
-  Player get _player => widget.play ?? Api.I.cameraPlayback;
+  PlanLoader get _loadPlan => widget.loadPlan ?? Api.I.cameraPlaybackPlan;
+  VideoOpener get _openVideo => widget.openVideo ?? _PhoneVideo.new;
 
-  /// What the picture shows now: the start plus the time played (frames come at real time).
+  /// What the picture shows now.
   DateTime? get _position =>
-      _playing && _playStart != null ? _playStart!.add(_clock.elapsed) : _at;
+      _playing && _video != null && _pieces.isNotEmpty ? momentIn(_pieces, _video!.position) : _at;
 
   @override
   void initState() {
@@ -207,7 +278,7 @@ class _RecordingPlayerScreenState extends State<RecordingPlayerScreen> with Lang
   @override
   void dispose() {
     _stop();
-    _tick?.cancel();
+    _still?.dispose();
     if (_full) _systemUi(full: false);
     super.dispose();
   }
@@ -251,42 +322,65 @@ class _RecordingPlayerScreenState extends State<RecordingPlayerScreen> with Lang
   }
 
   void _stop() {
-    _sub?.cancel();
-    _sub = null;
-    _cancel?.cancel();
-    _cancel = null;
-    _clock.stop();
-    _tick?.cancel();
+    _run++;
+    _opening = false;
+    _video?.removeListener(_onVideo);
+    _video?.dispose();
+    _video = null;
+  }
+
+  void _onVideo() {
+    final RecordingVideo? v = _video;
+    if (v == null || !mounted) return;
+    if (v.error != null || v.ended) {
+      // not while the player is still telling its listeners: pausing may dispose it
+      Future<void>.microtask(() {
+        if (mounted && identical(_video, v)) _pause(error: v.error, ended: v.error == null);
+      });
+    } else {
+      setState(() {});
+    }
   }
 
   Future<void> _play() async {
     final DateTime? at = _at;
     if (at == null) return;
     _stop();
-    final CancelToken cancel = _cancel = CancelToken();
+    final int run = _run;
     setState(() { _playing = true; _ended = false; _error = null; });
     try {
-      final (Stream<Uint8List> frames, DateTime start) = await _player(widget.id, wallClock(at), _hd, cancel);
-      if (!mounted || cancel.isCancelled) return;
-      _playStart = start;
-      _clock
-        ..reset()
-        ..start();
-      _tick = Timer.periodic(const Duration(seconds: 1), (_) { if (mounted) setState(() {}); });
-      _sub = frames.listen(
-        (Uint8List f) { if (mounted) setState(() => _frame = f); },
-        onError: (Object e) { if (mounted && !cancel.isCancelled) _pause(error: e.toString()); },
-        onDone: () { if (mounted && !cancel.isCancelled) _pause(ended: true); },
-        cancelOnError: true,
-      );
+      final Map<String, dynamic> plan = await _loadPlan(widget.id, wallClock(at));
+      if (!mounted || run != _run) return;
+      final RecordingVideo v = _openVideo(widget.id, wallClock(at), _hd);
+      _pieces = parsePieces(plan['pieces']);
+      _video = v..addListener(_onVideo);
+      _opening = true;
+      await v.open();
+      if (!mounted || run != _run) return;
+      _still?.dispose();
+      setState(() {
+        _still = null;
+        _opening = false;
+      });
     } catch (e) {
-      if (mounted && !cancel.isCancelled) _pause(error: e.toString());
+      if (mounted && run == _run) _pause(error: e.toString());
     }
   }
 
   void _pause({String? error, bool ended = false}) {
     final DateTime? pos = _position;
-    _stop();
+    final RecordingVideo? v = _video;
+    _run++;
+    _video = null;
+    _opening = false;
+    v?.removeListener(_onVideo);
+    if (v != null && error == null) {
+      v.pause();
+      _still?.dispose();
+      _still = v;
+    } else {
+      v?.dispose();
+    }
     setState(() {
       _at = pos;
       _playing = false;
@@ -332,9 +426,12 @@ class _RecordingPlayerScreenState extends State<RecordingPlayerScreen> with Lang
     if (!_playing) _play();
   }
 
-  Widget _picture({BoxFit fit = BoxFit.contain}) => _frame != null
-      ? InteractiveViewer(child: Image.memory(_frame!, gaplessPlayback: true, fit: fit))
-      : Icon(_playing ? Icons.hourglass_empty : Icons.play_circle_outline, size: 56, color: Colors.white38);
+  Widget _picture() {
+    final RecordingVideo? v = _video != null && !_opening ? _video : _still;
+    return v != null
+        ? InteractiveViewer(child: Center(child: v.view()))
+        : Icon(_playing ? Icons.hourglass_empty : Icons.play_circle_outline, size: 56, color: Colors.white38);
+  }
 
   Widget _fullScreen(DateTime? pos) => PopScope(
         canPop: false,
