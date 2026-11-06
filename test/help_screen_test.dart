@@ -1,5 +1,8 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nas_app/i18n.dart';
+import 'package:nas_app/main.dart' show HelpScreen;
 
 void main() {
   group('i18n — help screen top-level keys', () {
@@ -136,6 +139,52 @@ void main() {
     test('Android and iOS download labels are different', () {
       lang.value = 'en';
       expect(tr('helpJellyfinAndroid'), isNot(equals(tr('helpJellyfinIos'))));
+    });
+  });
+
+  group('help screen — copying the server address', () {
+    String? copied;
+
+    setUp(() {
+      copied = null;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (MethodCall call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map<Object?, Object?>)['text'] as String?;
+        }
+        return null;
+      });
+    });
+
+    tearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+
+    testWidgets('the remote address is copied and confirmed', (WidgetTester tester) async {
+      lang.value = 'en';
+      await tester.pumpWidget(const MaterialApp(home: HelpScreen()));
+      await tester.tap(find.byIcon(Icons.copy).first);
+      await tester.pump();
+      expect(copied, 'https://jellyfin.mattyzem.com');
+      expect(find.text('Address copied'), findsOneWidget);
+    });
+
+    testWidgets('the home network address is copied', (WidgetTester tester) async {
+      lang.value = 'en';
+      await tester.pumpWidget(const MaterialApp(home: HelpScreen()));
+      await tester.tap(find.text('Home network'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.copy).first);
+      await tester.pump();
+      expect(copied, 'http://192.168.50.141:8096');
+    });
+
+    test('copy labels translated', () {
+      for (final String l in <String>['en', 'cs']) {
+        lang.value = l;
+        for (final String key in <String>['copy', 'copiedAddress']) {
+          expect(tr(key), isNot(equals(key)));
+        }
+      }
     });
   });
 }

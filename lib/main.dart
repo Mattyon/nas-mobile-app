@@ -2862,10 +2862,27 @@ class _AddressCard extends StatelessWidget {
             Row(children: <Widget>[
               Icon(icon, size: 16, color: onColor.withValues(alpha: 0.7)),
               const SizedBox(width: 6),
-              Text(address,
-                  style: TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w600,
-                      color: onColor, fontFamily: 'monospace')),
+              Expanded(
+                child: Text(address,
+                    style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600,
+                        color: onColor, fontFamily: 'monospace')),
+              ),
+              // Typing the address on a phone is error-prone; copy it and paste it into
+              // the Jellyfin app instead.
+              IconButton(
+                icon: Icon(Icons.copy, size: 20, color: onColor),
+                tooltip: tr('copy'),
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: address));
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context)
+                    ..hideCurrentSnackBar()
+                    ..showSnackBar(SnackBar(
+                        content: Text(tr('copiedAddress')),
+                        duration: const Duration(seconds: 2)));
+                },
+              ),
             ]),
           ],
         ),

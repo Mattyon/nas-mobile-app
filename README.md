@@ -85,7 +85,7 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
   did). A "new app version" notice for the version already installed is dropped
   (`lib/notification_filter.dart`; the gateway also skips users whose phones report it).
 - **Notification settings** (the ⚙ in the notifications sheet, `lib/notification_settings.dart`) — one switch per kind of notification, stored on the gateway (`/notifications/prefs`); server alerts for the admin are not listed and cannot be muted. Between 23:00 and 07:00 the gateway marks notifications `silent` (unless you asked for the thing during the night) and the app shows them on a second, silent channel, "NAS Alerts (night)"; the web build's push is silent too.
-- **Help / Connect screen** — step-by-step Jellyfin setup for TV, phone, and browser on both local network and remote (Cloudflare Tunnel / Tailscale).
+- **Help / Connect screen** — step-by-step Jellyfin setup for TV, phone, and browser on both local network and remote (Cloudflare Tunnel / Tailscale). Each server address has a copy button ("Address copied"), to paste into the Jellyfin app instead of typing it.
 
 ## Configure
 On the login screen the **Gateway URL** is pre-set to `https://nas.mattyzem.com` (Cloudflare Tunnel — works on any network, no VPN needed). To use your own domain or a Tailscale IP instead, tap the URL field and change it.
