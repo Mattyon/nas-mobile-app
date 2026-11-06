@@ -374,6 +374,32 @@ class Api {
     return r.data!;
   }
 
+  /// "Download when out" (gateway reminders.py): this account's reminders.
+  Future<List<dynamic>> reminders() async {
+    final r = await _dio.get<Map<String, dynamic>>('/reminders');
+    return (r.data?['reminders'] as List<dynamic>?) ?? <dynamic>[];
+  }
+
+  /// Download a title once it is out; setting it again changes quality and language.
+  Future<Map<String, dynamic>> addReminder({
+    required String type,
+    required int? extId,
+    required String tier,
+    required String language,
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>('/reminders', data: <String, dynamic>{
+      'type': type,
+      if (type == 'tv') 'tvdbId': extId else 'tmdbId': extId,
+      'tier': tier,
+      'language': language,
+    });
+    return r.data ?? <String, dynamic>{};
+  }
+
+  Future<void> deleteReminder(String id) async {
+    await _dio.delete<Map<String, dynamic>>('/reminders/$id');
+  }
+
   Future<List<dynamic>> downloads() async {
     final r = await _dio.get<List<dynamic>>('/downloads');
     return r.data ?? <dynamic>[];

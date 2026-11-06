@@ -12,7 +12,7 @@ import 'tailscale_screen.dart';
 //
 //   AI chats (superadmin)
 //   Server ›     health check, Uptime Kuma, speed test, media sessions      (admin)
-//   Downloads ›  speed limits (admin), check for new episodes, trash (admin)
+//   Downloads ›  speed limits (admin), check for new episodes, download when out, trash (admin)
 //   House        a page: remote access / Tailscale (superadmin, a switch right on the
 //                page), smart sockets (admin), cameras and their recordings (superadmin)
 //   Users (admin)
@@ -64,7 +64,7 @@ bool menuItemVisible(String id, {required bool admin, required bool superadmin, 
       return admin;
     case 'webpush':
       return web;
-    default: // neweps, theme, jellyfin, help, logout
+    default: // neweps, reminders, theme, jellyfin, help, logout
       return true;
   }
 }
@@ -72,7 +72,7 @@ bool menuItemVisible(String id, {required bool admin, required bool superadmin, 
 const List<Object> _layout = <Object>[
   'ai',
   MenuGroup('server', Icons.dns_outlined, 'menuServer', <String>['health', 'kuma', 'speedtest', 'sessions']),
-  MenuGroup('downloads', Icons.download_outlined, 'downloads', <String>['speed', 'neweps', 'trash']),
+  MenuGroup('downloads', Icons.download_outlined, 'downloads', <String>['speed', 'neweps', 'reminders', 'trash']),
   MenuGroup('house', Icons.home_outlined, 'menuHouse', <String>['tailscale', 'tapo', 'camera', 'recordings']),
   'users',
   MenuGroup('settings', Icons.settings_outlined, 'menuSettings', <String>['theme', 'jellyfin', 'webpush', 'help']),
@@ -146,6 +146,7 @@ String menuLabel(String id, {bool dark = false}) {
     case 'sessions': return tr('mediaSessions');
     case 'speed': return tr('speedLimits');
     case 'neweps': return tr('checkNewEps');
+    case 'reminders': return tr('remindersTitle');
     case 'trash': return tr('trash');
     case 'tailscale': return tr('tailscaleRemoteAccess');
     case 'tapo': return tr('tapoDevices');
@@ -170,6 +171,7 @@ IconData menuIcon(String id, {bool dark = false}) {
     case 'sessions': return Icons.cast_connected;
     case 'speed': return Icons.speed;
     case 'neweps': return Icons.tv;
+    case 'reminders': return Icons.alarm;
     case 'trash': return Icons.delete_outline;
     case 'tailscale': return Icons.vpn_lock_outlined;
     case 'tapo': return Icons.power_outlined;

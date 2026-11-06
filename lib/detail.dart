@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'api.dart';
 import 'grab_progress.dart';
 import 'i18n.dart';
+import 'reminders_screen.dart';
 import 'season.dart';
 
 const String _kImg = 'https://image.tmdb.org/t/p/';
@@ -505,6 +506,17 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
               backgroundColor:
                   Colors.green.withValues(alpha: 0.12),
               padding: EdgeInsets.zero,
+            )
+          else if (notOutYet(_item))
+            // Not out yet: wait for it instead (reminders_screen.dart).
+            FilledButton.tonalIcon(
+              onPressed: () async {
+                final bool changed = await reminderAction(context, _item,
+                    pickLanguage: _pickLanguage, pickQuality: _pickQuality);
+                if (changed && mounted) setState(() {});
+              },
+              icon: Icon(reminderIcon(_item), size: 18),
+              label: Text(reminderLabel(_item)),
             )
           else
             FilledButton.icon(

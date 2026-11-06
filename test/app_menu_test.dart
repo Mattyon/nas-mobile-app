@@ -16,7 +16,7 @@ void main() {
     expect(menu(admin: true, superadmin: true), <String>[
       'ai',
       'server:health,kuma,speedtest,sessions',
-      'downloads:speed,neweps,trash',
+      'downloads:speed,neweps,reminders,trash',
       'house:tailscale,tapo,camera,recordings',
       'users',
       'settings:theme,jellyfin,help',
@@ -27,7 +27,7 @@ void main() {
   test('admin: no AI; House has only smart sockets, so it is a plain item', () {
     expect(menu(admin: true), <String>[
       'server:health,kuma,speedtest,sessions',
-      'downloads:speed,neweps,trash',
+      'downloads:speed,neweps,reminders,trash',
       'tapo',
       'users',
       'settings:theme,jellyfin,help',
@@ -35,8 +35,8 @@ void main() {
     ]);
   });
 
-  test('a regular user: check for new episodes, settings, log out', () {
-    expect(menu(), <String>['neweps', 'settings:theme,jellyfin,help', 'logout']);
+  test('a regular user: new episodes and download when out, settings, log out', () {
+    expect(menu(), <String>['downloads:neweps,reminders', 'settings:theme,jellyfin,help', 'logout']);
   });
 
   test('web build: notifications on this device in settings', () {
@@ -50,7 +50,7 @@ void main() {
   test('every item has a label and an icon, in both languages', () {
     for (final String l in <String>['en', 'cs']) {
       lang.value = l;
-      for (final String id in <String>['ai', 'health', 'kuma', 'speedtest', 'sessions', 'speed', 'neweps', 'trash',
+      for (final String id in <String>['ai', 'health', 'kuma', 'speedtest', 'sessions', 'speed', 'neweps', 'reminders', 'trash',
           'tailscale', 'tapo', 'camera', 'recordings', 'users', 'theme', 'jellyfin', 'webpush', 'help', 'logout']) {
         expect(menuLabel(id), isNot(equals(id)), reason: '$l $id');
         expect(menuIcon(id), isNot(Icons.circle_outlined), reason: id);
@@ -131,7 +131,7 @@ void main() {
     final List<PopupMenuEntry<String>> sub = submenuEntries(
         menuGroupFor('sub:downloads', admin: true, superadmin: true, web: false)!);
     expect(<String?>[for (final PopupMenuEntry<String> e in sub) if (e is PopupMenuItem<String>) e.value],
-        <String?>['back', 'speed', 'neweps', 'trash']);
+        <String?>['back', 'speed', 'neweps', 'reminders', 'trash']);
     await open(t, sub);
     expect(find.descendant(of: find.byKey(const ValueKey<String>('menu-back')), matching: find.text('Downloads')),
         findsOneWidget);

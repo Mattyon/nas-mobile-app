@@ -18,6 +18,7 @@ import 'clear_button.dart';
 import 'notification_filter.dart';
 import 'notification_target.dart';
 import 'recordings_screen.dart';
+import 'reminders_screen.dart';
 import 'tab_history.dart';
 import 'time_zone.dart';
 import 'client_log.dart';
@@ -1347,6 +1348,9 @@ class _HomeShellState extends State<HomeShell> with LangAware {
               SnackBar(content: Text(tr('newEpsStarted'))));
         }
       } catch (_) {}
+    } else if (v == 'reminders') {
+      Navigator.push<void>(context, MaterialPageRoute<void>(
+          builder: (_) => const RemindersScreen()));
     } else if (v == 'trash') {
       Navigator.of(context).push(MaterialPageRoute<void>(
           builder: (_) => const TrashScreen()));
@@ -1606,6 +1610,12 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
     await _doGrab(item, language, tier, source);
   }
 
+  Future<void> _remind(Map<String, dynamic> item) async {
+    final bool changed = await reminderAction(context, item,
+        pickLanguage: () => _pickLanguage(item), pickQuality: _pickQuality);
+    if (changed && mounted) setState(() {});
+  }
+
   Future<String?> _pickSource() {
     return showModalBottomSheet<String>(
       context: context,
@@ -1839,6 +1849,22 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
   }
 
   Widget _buildTrailing(Map<String, dynamic> item, bool busy) {
+    // Not out yet: nothing to download, but it can be waited for (reminders_screen.dart).
+    if (notOutYet(item)) {
+      return SizedBox(
+        height: 30,
+        child: OutlinedButton.icon(
+          onPressed: () => _remind(item),
+          style: OutlinedButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            textStyle: const TextStyle(fontSize: 12),
+          ),
+          icon: Icon(reminderIcon(item), size: 16),
+          label: Text(reminderLabel(item)),
+        ),
+      );
+    }
     final bool hasEn = item['on_disk_en'] == true;
     final bool hasCs = item['on_disk_cs'] == true;
     final bool inLibrary = hasEn && hasCs;
@@ -1920,6 +1946,15 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
                           _typeBadge(m['type']?.toString()),
                           const SizedBox(width: 6),
                           Text(m['year']?.toString() ?? ''),
+                          if (notOutYet(m) && releaseDateText(m['release_date']) != null) ...<Widget>[
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                  tr('premiereOn').replaceAll('{date}', releaseDateText(m['release_date'])!),
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11, color: Colors.orange)),
+                            ),
+                          ],
                         ],
                       ),
                       trailing: _buildTrailing(m, busy),

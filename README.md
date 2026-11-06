@@ -22,6 +22,8 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
   376 KB, while opening a title still pulls the 1.2 MB original.
 - **Download** at **Fast / Balanced / Best / Czech audio** quality (AI/heuristic picks the release; goes through Radarr/Sonarr so it's imported, renamed, and subtitled). Users with AI access first pick the **source**: Standard (Radarr/Sonarr) or ThePirateBay (season packs picked by the AI).
   While the request runs, its progress ("Fetching torrents…" … "Starting the download…") is a bar at the bottom, like the "Added to downloads" that replaces it, not a dialog: the app stays usable and more titles can be downloaded meanwhile ("Starting 2 downloads"; `lib/grab_progress.dart`).
+- **Download when out.** A title that is not released yet (the gateway marks it `upcoming`) shows **When out** instead of Download in the search list (with its premiere date) and on its page. Pick the language and quality as for a download; the NAS downloads it once a release exists and tells you at 12:00 on your phone's clock. Tap it again to change or cancel; the list is under Downloads › Download when out (`lib/reminders_screen.dart`, gateway `reminders.py`).
+- **Search order** comes from the gateway: titles named with the words you typed first, then by how many people rated them, films and shows mixed.
 - **Downloads** tab — live progress / speed / ETA / state; drag to reorder; cancel with stop button.
 - **Library** tab — list view, **alphabetical** (by sort title, so "The Green Mile" is
   under G; sorted by the gateway). Admins can delete a title with the trash icon on its
@@ -35,13 +37,13 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
 - **The ☰ menu** (`lib/app_menu.dart`), grouped since 1.1.8 (owner, 2026-10-27: too many
   items at once): **AI chats** (superadmin) · **Server ›** health check, Uptime Kuma,
   speedtest, media sessions (admin) · **Downloads ›** speed limits (admin), check new
-  episodes, trash (admin) · **House** remote access / Tailscale (superadmin, the switch is on
+  episodes, download when out, trash (admin) · **House** remote access / Tailscale (superadmin, the switch is on
   the page itself), smart sockets (admin), cameras (superadmin) · **Users** (admin) ·
   **Settings & help ›** light/dark theme, Jellyfin URL, notifications on this device (web
   build), help / connect · **Log out**. Groups with › are submenus (1.1.9): the menu shows
   their items in place, with a row back to the main menu on top; only House opens a page.
   Only what the role may use is shown, and a group with a single visible item is shown as
-  that item (a regular user sees: check new episodes, Settings & help, Log out). "Kill app"
+  that item (a regular user sees: Downloads › check new episodes and download when out, Settings & help, Log out). "Kill app"
   was removed (no longer needed). The Jellyfin URL is a setting of this phone (Android Auto
   uses it), so everyone can set it.
   What the items do -- **Admins**: media sessions (Plex + Jellyfin), speed limits and pause/resume,
@@ -281,6 +283,7 @@ cannot create a listing.
 ## Project layout
 - `lib/main.dart` — UI: auth gate, login, Search / Downloads / Library / Admin / Help screens.
 - `lib/detail.dart` — Item detail screen (TMDb backdrop, cast, season list, download picker).
+- `lib/reminders_screen.dart` — download when out: the When out button's flow, and the list of reminders.
 - `lib/grab_progress.dart` — the download request's progress bar at the bottom (search list and detail screen).
 - `lib/season.dart` — Season screen, episode sheet, and the TMDb + Sonarr season/episode merge.
 - `lib/api.dart` — gateway client (Dio) + token storage + biometric/remember-me auth; TMDb via the gateway's `/tmdb` proxy.
