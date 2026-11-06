@@ -1,8 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'api.dart';
+import 'grab_progress.dart';
 import 'i18n.dart';
 import 'season.dart';
 
@@ -216,57 +216,12 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
     );
   }
 
-  /// Modal with a spinner that cycles through grab stage messages while we wait.
-  /// Mirrors the search-list flow so Download shows the same steps everywhere.
-  VoidCallback _showStages() {
-    final List<String> stages = <String>[
-      tr('stageSearch'), tr('stageDatabases'), tr('stagePick'), tr('stageStart'),
-    ];
-    final ValueNotifier<int> step = ValueNotifier<int>(0);
-    final Timer timer = Timer.periodic(const Duration(milliseconds: 1600), (_) {
-      if (step.value < stages.length - 1) step.value++;
-    });
-    // A tap on the shadow hides it; the download carries on and its snackbar still comes.
-    bool open = true;
-    showDialog<void>(
-      context: context,
-      builder: (_) => Dialog(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              const SizedBox(
-                  width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
-              const SizedBox(width: 18),
-              Flexible(
-                child: ValueListenableBuilder<int>(
-                  valueListenable: step,
-                  builder: (_, int i, _) => Text(stages[i]),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ).then((_) {
-      open = false;
-      timer.cancel();
-    });
-    // Idempotent, and pops only this dialog: once it is gone (hidden by a tap, or closed
-    // already) a pop would take down whatever is underneath instead.
-    return () {
-      timer.cancel();
-      if (open && mounted) {
-        open = false;
-        Navigator.of(context, rootNavigator: true).pop();
-      }
-    };
-  }
-
   Future<void> _doGrab(String language, String tier, String source) async {
     setState(() => _grabbing = true);
-    final VoidCallback closeStages = _showStages();
+    // At the bottom, not a dialog: the app stays usable, and the result still shows if
+    // this screen was left meanwhile (the messenger is the app's, not this route's).
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    final VoidCallback closeStages = GrabProgress.start(messenger);
     final String itype = _item['type'] as String? ?? 'movie';
     try {
       final Map<String, dynamic> result = await Api.I.grab(
@@ -278,8 +233,8 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
         source: source,
       );
       closeStages();
-      if (!mounted) return;
       if (result['no_czech_audio'] == true) {
+        if (!mounted) return;
         setState(() => _grabbing = false);
         await _offerFallback(
             tier,
@@ -287,7 +242,7 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
             source);
         return;
       }
-      setState(() {
+      if (mounted) setState(() {
         if (language == 'cs') {
           _item['on_disk_cs'] = true;
           _detail?['on_disk_cs'] = true;
@@ -296,16 +251,14 @@ class _DetailScreenState extends State<DetailScreen> with LangAware {
           _detail?['on_disk_en'] = true;
         }
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      messenger.showSnackBar(SnackBar(
           // Dismiss by swiping left or right (instead of the default downward swipe).
           dismissDirection: DismissDirection.horizontal,
           content:
               Text(itype == 'tv' ? tr('requestedTv') : tr('added'))));
     } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(tr('error'))));
-      }
+      closeStages();
+      messenger.showSnackBar(SnackBar(content: Text(tr('error'))));
     } finally {
       closeStages();
       if (mounted) setState(() => _grabbing = false);

@@ -22,6 +22,7 @@ import 'tab_history.dart';
 import 'time_zone.dart';
 import 'client_log.dart';
 import 'detail.dart';
+import 'grab_progress.dart';
 import 'i18n.dart';
 import 'notification_settings.dart';
 import 'tailscale_screen.dart';
@@ -1491,7 +1492,7 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
   List<dynamic> _results = <dynamic>[];
   bool _busy = false;
   bool _searched = false; // a search has actually run
-  String? _grabbing; // key of the item currently being requested
+  final Set<String> _grabbing = <String>{}; // keys of the items being requested
 
   @override
   void initState() {
@@ -1731,8 +1732,10 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
 
   Future<void> _doGrab(Map<String, dynamic> item, String language, String tier,
       String source) async {
-    setState(() => _grabbing = _key(item));
-    final VoidCallback closeStages = _showStages();
+    final String key = _key(item);
+    setState(() => _grabbing.add(key));
+    // At the bottom, not a dialog: other titles can be downloaded meanwhile.
+    final VoidCallback closeStages = GrabProgress.start(ScaffoldMessenger.of(context));
     final String itype = item['type']?.toString() ?? 'movie';
     try {
       final Map<String, dynamic> result = await Api.I.grab(
@@ -1744,9 +1747,10 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
         source: source,
       );
 
+      closeStages();
       if (result['no_czech_audio'] == true) {
-        closeStages();
-        if (mounted) setState(() => _grabbing = null);
+        if (!mounted) return;
+        setState(() => _grabbing.remove(key));
         await _offerEnglishFallback(
             item, tier, result['title']?.toString() ?? '', source);
         return;
@@ -1768,10 +1772,11 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
       }
       _snackGo(itype == 'tv' ? tr('requestedTv') : tr('added'));
     } catch (_) {
+      closeStages();
       _snack(tr('error'));
     } finally {
       closeStages();
-      if (mounted) setState(() => _grabbing = null);
+      if (mounted) setState(() => _grabbing.remove(key));
     }
   }
 
@@ -1799,53 +1804,6 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
     if (confirmed == true && mounted) {
       await _doGrab(item, 'en', tier, source);
     }
-  }
-
-  /// Modal with a spinner that cycles through stage messages while we wait.
-  VoidCallback _showStages() {
-    final List<String> stages = <String>[
-      tr('stageSearch'), tr('stageDatabases'), tr('stagePick'), tr('stageStart'),
-    ];
-    final ValueNotifier<int> step = ValueNotifier<int>(0);
-    final Timer timer = Timer.periodic(const Duration(milliseconds: 1600), (_) {
-      if (step.value < stages.length - 1) step.value++;
-    });
-    // A tap on the shadow hides it; the download carries on and its snackbar still comes.
-    bool open = true;
-    showDialog<void>(
-      context: context,
-      builder: (_) => Dialog(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              const SizedBox(
-                  width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
-              const SizedBox(width: 18),
-              Flexible(
-                child: ValueListenableBuilder<int>(
-                  valueListenable: step,
-                  builder: (_, int i, _) => Text(stages[i]),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ).then((_) {
-      open = false;
-      timer.cancel();
-    });
-    // Idempotent, and pops only this dialog: once it is gone (hidden by a tap, or closed
-    // already) a pop would take down whatever is underneath instead.
-    return () {
-      timer.cancel();
-      if (open && mounted) {
-        open = false;
-        Navigator.of(context, rootNavigator: true).pop();
-      }
-    };
   }
 
   void _snack(String m) {
@@ -1950,7 +1908,7 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
                   itemCount: _results.length,
                   itemBuilder: (BuildContext context, int i) {
                     final Map<String, dynamic> m = _results[i] as Map<String, dynamic>;
-                    final bool busy = _grabbing == _key(m);
+                    final bool busy = _grabbing.contains(_key(m));
                     return ListTile(
                       onTap: () => Navigator.push<void>(context,
                           MaterialPageRoute<void>(
