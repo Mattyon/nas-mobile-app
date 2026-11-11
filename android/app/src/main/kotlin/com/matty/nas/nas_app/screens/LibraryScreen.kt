@@ -18,7 +18,8 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 /**
- * Every movie or every TV show in Jellyfin, alphabetical. When the list is longer than the
+ * Every movie or every TV show in Jellyfin, alphabetical; one starting with "The"/"A"/"An"
+ * is listed under both letters (LibraryGroups.entries). When the list is longer than the
  * car allows, it shows letter groups (LibraryGroups); a group opens in place and Back goes
  * up a level, so the screen stack stays within Android Auto's five templates
  * (Home → TV Shows → show → season → player).
@@ -28,6 +29,7 @@ class LibraryScreen(carContext: CarContext, private val shows: Boolean) : Screen
     private val api = NasApiClient(carContext)
     private val title = if (shows) "TV Shows" else "Movies"
     private var items: List<JSONObject> = emptyList()
+    private var entries: List<LibraryGroups.Entry<JSONObject>> = emptyList()
     private var loaded = false
     private var error: String? = null
 
@@ -61,6 +63,7 @@ class LibraryScreen(carContext: CarContext, private val shows: Boolean) : Screen
             lifecycleScope.launch(Dispatchers.IO) {
                 items = runCatching { if (shows) api.getJellyfinShows() else api.getJellyfinMovies() }
                     .getOrDefault(emptyList())
+                entries = LibraryGroups.entries(items, { it.optString("Name", "") }, { it.optString("SortName") })
                 error = if (items.isEmpty()) {
                     "Could not load ${title.lowercase()} from Jellyfin at ${api.jellyfinUrl}."
                 } else null
@@ -82,13 +85,16 @@ class LibraryScreen(carContext: CarContext, private val shows: Boolean) : Screen
         }
 
         val from = path.lastOrNull()?.from ?: 0
-        val to = path.lastOrNull()?.to ?: items.size
-        val names = items.subList(from, to).map { sortName(it) }
+        val to = path.lastOrNull()?.to ?: entries.size
+        val names = entries.subList(from, to).map { it.key }
         val groups = LibraryGroups.split(names, listLimit)
 
         val list = ItemList.Builder().apply {
             if (groups.isEmpty()) {
-                for (i in from until to) addItem(if (shows) showRow(items[i]) else movieRow(i))
+                for (i in from until to) {
+                    val o = entries[i].item
+                    addItem(if (shows) showRow(o) else movieRow(o))
+                }
             } else {
                 groups.forEach { g ->
                     val abs = LibraryGroups.Group(from + g.from, from + g.to, g.label)
@@ -115,21 +121,18 @@ class LibraryScreen(carContext: CarContext, private val shows: Boolean) : Screen
             .build()
     }
 
-    private fun sortName(o: JSONObject) =
-        o.optString("SortName").ifBlank { o.optString("Name", "") }
-
     private fun label(o: JSONObject): String {
         val name = o.optString("Name", "Unknown")
         val year = o.optInt("ProductionYear", 0)
         return if (year > 0) "$name ($year)" else name
     }
 
-    // The player gets the whole list, so "next" continues alphabetically as before.
-    private fun movieRow(index: Int): Row = Row.Builder()
-        .setTitle(label(items[index]))
+    // The player gets the whole list (each film once), so "next" continues alphabetically.
+    private fun movieRow(o: JSONObject): Row = Row.Builder()
+        .setTitle(label(o))
         .addText("Tap to play")
         .setBrowsable(true)
-        .setOnClickListener { screenManager.push(VideoPlayerScreen(carContext, items, index, api)) }
+        .setOnClickListener { screenManager.push(VideoPlayerScreen(carContext, items, items.indexOf(o), api)) }
         .build()
 
     private fun showRow(o: JSONObject): Row = Row.Builder()

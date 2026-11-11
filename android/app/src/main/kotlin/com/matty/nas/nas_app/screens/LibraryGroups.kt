@@ -1,5 +1,8 @@
 package com.matty.nas.nas_app.screens
 
+import java.text.Collator
+import java.util.Locale
+
 /**
  * Splits an alphabetical list into letter groups that fit the car's list limit
  * ("A – C", "D – G", ...). Pure, so it is unit-tested without a car.
@@ -9,6 +12,29 @@ package com.matty.nas.nas_app.screens
  * list when it fits, otherwise at most [limit] groups, each opened in place.
  */
 object LibraryGroups {
+
+    /** One row: the title it is filed under ([key]) and the movie or show. */
+    data class Entry<T>(val key: String, val item: T)
+
+    private val ARTICLE = Regex("^(the|a|an)\\s+", RegexOption.IGNORE_CASE)
+    private val collator = Collator.getInstance(Locale.ROOT).apply { strength = Collator.SECONDARY }
+
+    /**
+     * Every title filed under its sort name (Jellyfin drops "The", "A", "An": The Big Bang
+     * Theory under B), and a title starting with an article also under its full name (under
+     * T as well) -- owner, 2026-11-11: "people doesn't always know the full name".
+     * Alphabetical, accents next to their letter (Č with C).
+     */
+    fun <T> entries(items: List<T>, name: (T) -> String, sortName: (T) -> String): List<Entry<T>> =
+        items.flatMap { item ->
+            val full = name(item).trim()
+            val sort = sortName(item).trim().ifBlank { ARTICLE.replace(full, "") }
+            if (ARTICLE.containsMatchIn(full) && !full.equals(sort, ignoreCase = true)) {
+                listOf(Entry(sort, item), Entry(full, item))
+            } else {
+                listOf(Entry(sort, item))
+            }
+        }.sortedWith { a, b -> collator.compare(a.key, b.key) }
 
     data class Group(val from: Int, val to: Int, val label: String) {
         val size get() = to - from

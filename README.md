@@ -64,7 +64,9 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
 - **Android Auto / AAOS** (`android/app/src/main/kotlin/.../NasCarAppService.kt`,
   `screens/`) — Jellyfin movies and TV shows with a player, downloads, search and sockets in the
   car; the Jellyfin URL comes from the menu setting. **Movies** and **TV Shows** each list the
-  whole library alphabetically (`LibraryScreen`); when it is longer than the car allows in one
+  whole library alphabetically (`LibraryScreen`). A title starting with "The", "A" or "An" is
+  listed under both letters (The Big Bang Theory under B and T); accents sort with their letter
+  (Č with C). When it is longer than the car allows in one
   list, it shows letter groups (A – C, D – G, ...) that open in place, so Back goes up a level
   and the stack stays within Android Auto's five templates. Until 1.2.4 the car showed only
   the first 6 of each. The car signs in to Jellyfin with a
