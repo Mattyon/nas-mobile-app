@@ -93,10 +93,18 @@ class HomeScreen(carContext: CarContext) : Screen(carContext) {
             )
             .addItem(
                 Row.Builder()
-                    .setTitle("Videos")
-                    .addText("Browse and play from Jellyfin")
+                    .setTitle("Movies")
+                    .addText("Play from Jellyfin")
                     .setBrowsable(true)
-                    .setOnClickListener { screenManager.push(MediaBrowserScreen(carContext)) }
+                    .setOnClickListener { screenManager.push(LibraryScreen(carContext, shows = false)) }
+                    .build()
+            )
+            .addItem(
+                Row.Builder()
+                    .setTitle("TV Shows")
+                    .addText("Play from Jellyfin")
+                    .setBrowsable(true)
+                    .setOnClickListener { screenManager.push(LibraryScreen(carContext, shows = true)) }
                     .build()
             )
             .build()

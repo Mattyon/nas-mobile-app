@@ -226,7 +226,7 @@ class NasApiClient(private val context: Context) {
     private fun getJellyfinItems(type: String): List<JSONObject> {
         val auth = getJellyfinAuth() ?: return emptyList()
         val url = "$jellyfinUrl/Users/${auth.userId}/Items" +
-            "?IncludeItemTypes=$type&Recursive=true&SortBy=SortName&SortOrder=Ascending&Limit=100" +
+            "?IncludeItemTypes=$type&Recursive=true&SortBy=SortName&SortOrder=Ascending&Fields=SortName" +
             "&IsMissing=false"
         val data = jellyfinGetJson(url) ?: return emptyList()
         val items = data.optJSONArray("Items") ?: return emptyList()

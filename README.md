@@ -62,8 +62,12 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
   and shows who changed it last. The app itself never goes through Tailscale, so it can turn
   it back on from anywhere (gateway `GET/POST /tailscale`, nas-stack `host/tailscale-switch.sh`).
 - **Android Auto / AAOS** (`android/app/src/main/kotlin/.../NasCarAppService.kt`,
-  `screens/`) — Jellyfin video browser and player, downloads, search and sockets in the
-  car; the Jellyfin URL comes from the menu setting. The car signs in to Jellyfin with a
+  `screens/`) — Jellyfin movies and TV shows with a player, downloads, search and sockets in the
+  car; the Jellyfin URL comes from the menu setting. **Movies** and **TV Shows** each list the
+  whole library alphabetically (`LibraryScreen`); when it is longer than the car allows in one
+  list, it shows letter groups (A – C, D – G, ...) that open in place, so Back goes up a level
+  and the stack stays within Android Auto's five templates. Until 1.2.4 the car showed only
+  the first 6 of each. The car signs in to Jellyfin with a
   token the phone app stores on every start (`aa_jellyfin_token`). Jellyfin 12 only accepts
   the `Authorization: MediaBrowser ...` header and the `ApiKey=` query parameter -- with the
   old `X-Emby-*` headers and `api_key=` every video in the car failed with 401 (fixed in
@@ -103,6 +107,7 @@ tests can also be run alone in the same builder image:
 flutter pub get
 flutter analyze            # static check
 flutter test               # unit tests (widgets, i18n, API helpers)
+(cd android && ./gradlew :app:testDebugUnitTest)   # Android Auto helpers (JUnit)
 ```
 
 The release publisher has its own Python tests:
