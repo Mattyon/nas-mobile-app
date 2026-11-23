@@ -49,6 +49,30 @@ void main() {
     expect(calls, 2);                                         // closed: no more requests
   });
 
+  testWidgets('an episode in the library says so and can be watched', (WidgetTester tester) async {
+    final List<String> watched = <String>[];
+    lang.value = 'en';
+    await tester.pumpWidget(MaterialApp(
+        home: DownloadFilesScreen(
+      title: 'Manifest.S02',
+      load: () async => <dynamic>[
+        <String, dynamic>{'name': 'Manifest.S02E01.mkv', 'episode': 'S02E01', 'progress': 100.0,
+          'size_bytes': 1048576, 'downloaded_bytes': 1048576, 'in_library': true, 'jellyfin_id': 'jf1'},
+        <String, dynamic>{'name': 'Manifest.S02E02.mkv', 'episode': 'S02E02', 'progress': 100.0,
+          'size_bytes': 1048576, 'downloaded_bytes': 1048576, 'in_library': true, 'jellyfin_id': null},
+        <String, dynamic>{'name': 'Manifest.S02E03.mkv', 'episode': 'S02E03', 'progress': 20.0,
+          'size_bytes': 1048576, 'downloaded_bytes': 209715, 'in_library': false, 'jellyfin_id': null},
+      ],
+      watch: (String id) async => watched.add(id),
+    )));
+    await tester.pump();
+    expect(find.text('100%  •  1 MB  •  in the library'), findsNWidgets(2));
+    expect(find.byIcon(Icons.play_circle_fill), findsOneWidget);   // Jellyfin knows only E01 yet
+    await tester.tap(find.byIcon(Icons.play_circle_fill));
+    expect(watched, <String>['jf1']);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('says so when the files cannot be loaded', (WidgetTester tester) async {
     await pump(tester, () async => throw Exception('offline'));
     expect(find.text('Could not load the files'), findsOneWidget);

@@ -10,6 +10,14 @@ void main() {
     expect(kStoreUrl, contains('id=mattyzem.nas'));
   });
 
+  test('ready to watch opens that title when it says which', () {
+    String? t(String event, String kind, Object id) =>
+        notificationTarget(<String, dynamic>{'event': event, 'kind': kind, 'item_id': id});
+    expect(t('movie.ready', 'movie', 12), 'movie:12');
+    expect(t('tv.ready', 'tv', 49), 'tv:49');
+    expect(t('tv.first_ready', 'tv', 49), 'tv:49');
+  });
+
   test('ready to watch opens the library', () {
     for (final String e in <String>['movie.ready', 'tv.ready', 'tv.first_ready', 'tv.new_episodes', 'tv.premiere']) {
       expect(target(e), 'tab:2', reason: e);

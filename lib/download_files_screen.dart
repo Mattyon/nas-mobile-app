@@ -9,13 +9,20 @@ import 'i18n.dart';
 /// want to see a screen showing all the episodes and their progress (even the ones that are
 /// 100% downloaded)"). Rows come from the gateway's GET /downloads/{hash}/files: video files
 /// in episode order, skipped bonus material left out. Refreshes every few seconds.
+///
+/// An episode already in the library (the NAS imports each one as soon as it is complete)
+/// says so and gets a Watch button that opens it in Jellyfin (owner, 2026-11-23: "Watch
+/// now" for episodes that arrived while the rest downloads).
 class DownloadFilesScreen extends StatefulWidget {
-  const DownloadFilesScreen({super.key, required this.title, required this.load});
+  const DownloadFilesScreen({super.key, required this.title, required this.load, this.watch});
 
   final String title;
 
   /// Fetches the rows (Api.I.downloadFiles(hash) in the app).
   final Future<List<dynamic>> Function() load;
+
+  /// Opens a Jellyfin item; no Watch buttons without it.
+  final Future<Object?> Function(String jellyfinId)? watch;
 
   static const Duration refreshEvery = Duration(seconds: 3);
 
@@ -70,6 +77,8 @@ class _DownloadFilesScreenState extends State<DownloadFilesScreen> with LangAwar
     final String? episode = f['episode']?.toString();
     final num size = (f['size_bytes'] as num?) ?? 0;
     final num got = (f['downloaded_bytes'] as num?) ?? 0;
+    final bool inLibrary = f['in_library'] == true;
+    final String? jellyfinId = f['jellyfin_id']?.toString();
     return ListTile(
       leading: Icon(done ? Icons.check_circle : Icons.downloading,
           color: done ? Colors.green : Colors.grey),
@@ -81,10 +90,18 @@ class _DownloadFilesScreenState extends State<DownloadFilesScreen> with LangAwar
         const SizedBox(height: 4),
         LinearProgressIndicator(value: pct / 100, color: done ? Colors.green : null),
         const SizedBox(height: 4),
-        Text(done
-            ? '100%  •  ${fmtBytes(size)}'
-            : '${pct.toStringAsFixed(1)}%  •  ${fmtBytes(got)} / ${fmtBytes(size)}'),
+        Text((done
+                ? '100%  •  ${fmtBytes(size)}'
+                : '${pct.toStringAsFixed(1)}%  •  ${fmtBytes(got)} / ${fmtBytes(size)}') +
+            (inLibrary ? '  •  ${tr('filesInLibrary')}' : '')),
       ]),
+      trailing: jellyfinId != null && widget.watch != null
+          ? IconButton(
+              icon: const Icon(Icons.play_circle_fill, size: 32),
+              tooltip: tr('watchNow'),
+              onPressed: () => widget.watch!(jellyfinId),
+            )
+          : null,
     );
   }
 

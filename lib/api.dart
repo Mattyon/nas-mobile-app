@@ -307,15 +307,16 @@ class Api {
       if (!hasIt) return false;
       final available = await _localAuth.isDeviceSupported();
       if (!available) {
-        // Fall back to silent auto-login if biometrics not available.
-        return _tryAutoLogin();
+        // Fall back to silent auto-login if biometrics not available. Awaited: an error
+        // must land in the catch below (false: the login screen), not escape it.
+        return await _tryAutoLogin();
       }
       final authed = await _localAuth.authenticate(
         localizedReason: 'Authenticate to log in to NAS',
         options: const AuthenticationOptions(biometricOnly: false),
       );
       if (!authed) return false;
-      return _tryAutoLogin();
+      return await _tryAutoLogin();
     } catch (_) {
       return false;
     }

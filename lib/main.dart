@@ -126,7 +126,20 @@ Future<void> _showSystemNotification(Map<String, dynamic> n) async {
       ),
     ),
   );
+  await logNotificationShown(n, 'push');
 }
+
+/// Tell the gateway's log that this phone showed notification [n] (owner, 2026-11-23:
+/// Manifest's "ready" was sent, and nobody could tell whether the phone showed it). Queued
+/// through SharedPreferences, so it works from the push service's and WorkManager's
+/// isolates too; the app sends the queue with its next log batch.
+Future<void> logNotificationShown(Map<String, dynamic> n, String path) =>
+    ClientLog.persist('info', 'notification', 'shown', <String, Object?>{
+      'id': n['id'],
+      'event': n['event'],
+      'title': n['title'],
+      'path': path,
+    });
 
 /// Compact relative timestamp: "now", "5m", "2h", "3d", "8.6."
 String _formatTs(String? ts) {
@@ -312,6 +325,7 @@ Future<void> _bgPollNotifications() async {
         ),
       ),
     );
+    await logNotificationShown(n, 'poll');
   }
 }
 
@@ -1136,6 +1150,25 @@ class _HomeShellState extends State<HomeShell> with LangAware {
     if (selectedTab.value == 1) DownloadsSnack.downloadsOpened();
   }
 
+  // "Ready" opens the title itself (owner, 2026-11-23), found in the library by its
+  // Radarr/Sonarr id; the Library tab is the fallback when it cannot be found.
+  Future<void> _openTitle(String target) async {
+    selectedTab.value = 2;
+    final int colon = target.indexOf(':');
+    final String type = target.substring(0, colon);
+    final String id = target.substring(colon + 1);
+    try {
+      final List<dynamic> items = await Api.I.library(type, '');
+      final Map<String, dynamic>? item = items
+          .whereType<Map<String, dynamic>>()
+          .where((Map<String, dynamic> m) => m['id']?.toString() == id)
+          .firstOrNull;
+      if (item == null || !mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => DetailScreen(item: <String, dynamic>{...item, 'type': type})));
+    } catch (_) {}
+  }
+
   Future<void> _notificationTapped() async {
     final String? target = pendingNotificationTap.value;
     if (target == null || !mounted) return;
@@ -1144,6 +1177,8 @@ class _HomeShellState extends State<HomeShell> with LangAware {
     Navigator.of(context).popUntil((Route<dynamic> r) => r.isFirst);
     if (target.startsWith('tab:')) {
       selectedTab.value = int.tryParse(target.substring(4)) ?? 0;
+    } else if (target.startsWith('movie:') || target.startsWith('tv:')) {
+      await _openTitle(target);
     } else if (target == 'store') {
       await openExternalUrl(kStoreUrl);
     } else if (target.startsWith('chat:') && Api.I.isSuperadmin) {
@@ -2231,7 +2266,11 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           : () => Navigator.of(context).push(MaterialPageRoute<void>(
               builder: (_) => DownloadFilesScreen(
                   title: t['name']?.toString() ?? '',
-                  load: () => Api.I.downloadFiles(t['hash'].toString())))),
+                  load: () => Api.I.downloadFiles(t['hash'].toString()),
+                  // Jellyfin's page for the episode; the Jellyfin app opens it when it
+                  // handles the server's links, the browser otherwise.
+                  watch: (String id) =>
+                      openExternalUrl('${Api.I.jellyfinUrl}/web/#/details?id=$id')))),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[

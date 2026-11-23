@@ -5,6 +5,7 @@
 // bell list uses the same one.
 //
 //   tab:0 / tab:1 / tab:2   Search / Downloads / Library
+//   movie:<id> / tv:<id>    that title's page ("ready"), by its Radarr/Sonarr id
 //   store                   the app's Play Store listing
 //   chat:<id>               that AI chat
 //   kuma                    Uptime Kuma
@@ -28,6 +29,11 @@ String? notificationTarget(Map<String, dynamic> n) {
     case 'movie.ready':
     case 'tv.ready':
     case 'tv.first_ready':
+      // the title itself, when the notification says which (owner, 2026-11-23)
+      final Object? item = n['item_id'];
+      final String kind = n['kind']?.toString() ?? '';
+      if (item != null && (kind == 'movie' || kind == 'tv')) return '$kind:$item';
+      return 'tab:2';
     case 'tv.new_episodes':
     case 'tv.premiere':
     case 'tv.still_missing':
