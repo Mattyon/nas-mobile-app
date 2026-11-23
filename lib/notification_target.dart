@@ -27,6 +27,7 @@ String? notificationTarget(Map<String, dynamic> n) {
       return 'kuma';
     case 'movie.ready':
     case 'tv.ready':
+    case 'tv.first_ready':
     case 'tv.new_episodes':
     case 'tv.premiere':
     case 'tv.still_missing':

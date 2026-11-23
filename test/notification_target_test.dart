@@ -11,7 +11,7 @@ void main() {
   });
 
   test('ready to watch opens the library', () {
-    for (final String e in <String>['movie.ready', 'tv.ready', 'tv.new_episodes', 'tv.premiere']) {
+    for (final String e in <String>['movie.ready', 'tv.ready', 'tv.first_ready', 'tv.new_episodes', 'tv.premiere']) {
       expect(target(e), 'tab:2', reason: e);
     }
   });
