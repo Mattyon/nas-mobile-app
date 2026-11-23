@@ -21,10 +21,10 @@ Flutter mobile client (Android first; iOS later from the same codebase) for the 
   hero the latter. Measured: the library list went from 4480 KB of cached images to
   376 KB, while opening a title still pulls the 1.2 MB original.
 - **Download** at **Fast / Balanced / Best / Czech audio** quality (AI/heuristic picks the release; goes through Radarr/Sonarr so it's imported, renamed, and subtitled). Users with AI access first pick the **source**: Standard (Radarr/Sonarr) or ThePirateBay (season packs picked by the AI).
-  While the request runs, its progress ("Fetching torrents…" … "Starting the download…") is a bar at the bottom, like the "Added to downloads" that replaces it, not a dialog: the app stays usable and more titles can be downloaded meanwhile ("Starting 2 downloads"; `lib/grab_progress.dart`).
+  While the request runs, its progress ("Fetching torrents…" … "Starting the download…") is a bar at the bottom, like the "Added to downloads" that replaces it, not a dialog: the app stays usable and more titles can be downloaded meanwhile ("Starting 2 downloads"; `lib/grab_progress.dart`). Opening the Downloads tab by any way (the bottom bar, the overlay's button, a notification) clears every "Added to downloads" overlay, the one showing and the ones queued behind it; other overlays stay (`lib/downloads_snack.dart`).
 - **Download when out.** A title that is not released yet (the gateway marks it `upcoming`) shows **When out** instead of Download in the search list (with its premiere date) and on its page. Pick the language and quality as for a download; the NAS downloads it once a release exists and tells you at 12:00 on your phone's clock. Tap it again to change or cancel; the list is under Downloads › Download when out (`lib/reminders_screen.dart`, gateway `reminders.py`).
 - **Search order** comes from the gateway: titles named with the words you typed first, then by how many people rated them, films and shows mixed.
-- **Downloads** tab — live progress / speed / ETA / state; drag to reorder; cancel with stop button.
+- **Downloads** tab — live progress / speed / ETA / state; drag to reorder; cancel with stop button. Tap a download to see each of its files with its own progress, refreshed every 3 s: a season pack's episodes in order, finished ones too ("1 of 10 done"; `lib/download_files_screen.dart`, gateway `GET /downloads/{hash}/files`).
 - **Library** tab — list view, **alphabetical** (by sort title, so "The Green Mile" is
   under G; sorted by the gateway). Admins can delete a title with the trash icon on its
   row: it is **moved to the Trash**, restorable for `RECYCLE_BIN_DAYS` (14) days, then
@@ -292,6 +292,8 @@ cannot create a listing.
 - `lib/detail.dart` — Item detail screen (TMDb backdrop, cast, season list, download picker).
 - `lib/reminders_screen.dart` — download when out: the When out button's flow, and the list of reminders.
 - `lib/grab_progress.dart` — the download request's progress bar at the bottom (search list and detail screen).
+- `lib/downloads_snack.dart` — the "Added to downloads" overlay; gone once Downloads is opened.
+- `lib/download_files_screen.dart` — one download's files with their own progress.
 - `lib/season.dart` — Season screen, episode sheet, and the TMDb + Sonarr season/episode merge.
 - `lib/api.dart` — gateway client (Dio) + token storage + biometric/remember-me auth; TMDb via the gateway's `/tmdb` proxy.
 - `lib/i18n.dart` — English/Czech strings, `tr()`, `LangAware` mixin, language toggle.

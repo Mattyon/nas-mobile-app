@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'download_files_screen.dart';
+import 'downloads_snack.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
@@ -1127,8 +1129,12 @@ class _HomeShellState extends State<HomeShell> with LangAware {
     } catch (_) {}
   }
 
-  // The search stays alive offstage; its keyboard must not.
-  void _tabChanged() => FocusManager.instance.primaryFocus?.unfocus();
+  // The search stays alive offstage; its keyboard must not. Opening Downloads clears the
+  // "Added to downloads" overlays: they have said what they had to.
+  void _tabChanged() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (selectedTab.value == 1) DownloadsSnack.downloadsOpened();
+  }
 
   Future<void> _notificationTapped() async {
     final String? target = pendingNotificationTap.value;
@@ -1822,18 +1828,14 @@ class _SearchScreenState extends State<SearchScreen> with LangAware {
     }
   }
 
-  // Snackbar with a "Downloads" action that jumps to the Downloads tab.
+  // Snackbar with a "Downloads" action that jumps to the Downloads tab; it goes once
+  // Downloads is opened by any way (downloads_snack.dart).
   void _snackGo(String m) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(m),
-      duration: const Duration(seconds: 6),
-      // Dismiss by swiping left or right (instead of the default downward swipe).
-      dismissDirection: DismissDirection.horizontal,
-      action: SnackBarAction(
-        label: tr('downloads'),
-        onPressed: () => selectedTab.value = 1,
-      ),
+    ScaffoldMessenger.of(context).showSnackBar(DownloadsSnack.build(
+      m,
+      label: tr('downloads'),
+      onOpen: () => selectedTab.value = 1,
     ));
   }
 
@@ -2223,6 +2225,13 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           : null,
       title: Text(t['name']?.toString() ?? '',
           maxLines: 1, overflow: TextOverflow.ellipsis, style: red),
+      // Each file's own progress: a season pack's episodes, finished ones too.
+      onTap: t['hash'] == null
+          ? null
+          : () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => DownloadFilesScreen(
+                  title: t['name']?.toString() ?? '',
+                  load: () => Api.I.downloadFiles(t['hash'].toString())))),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[

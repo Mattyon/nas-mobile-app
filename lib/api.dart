@@ -405,6 +405,12 @@ class Api {
     return r.data ?? <dynamic>[];
   }
 
+  /// One download's video files with their own progress (season pack: each episode).
+  Future<List<dynamic>> downloadFiles(String hash) async {
+    final r = await _dio.get<List<dynamic>>('/downloads/$hash/files');
+    return r.data ?? <dynamic>[];
+  }
+
   Future<List<dynamic>> library(String type, String q) async {
     final r = await _dio.get<Map<String, dynamic>>('/library',
         queryParameters: <String, dynamic>{'type': type, 'q': q});
